@@ -311,7 +311,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"AFMR", NULL, "Aux/FM Stereo In"},
 };
 
-static int sdp4430_twl6040_init(struct snd_soc_pcm_runtime *rtd)
+static int sdp4430_twl6040_init_hs(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_soc_codec *codec = rtd->codec;
 	int ret;
@@ -369,6 +369,13 @@ static int sdp4430_twl6040_init(struct snd_soc_pcm_runtime *rtd)
 	rtd->pmdown_time = 500;
 
 	return ret;
+}
+
+static int sdp4430_twl6040_init_hf(struct snd_soc_pcm_runtime *rtd)
+{
+	/* wait 500 ms before switching of HF power */
+	rtd->pmdown_time = 500;
+	return 0;
 }
 
 /* TODO: make this a separate BT CODEC driver or DUMMY */
@@ -649,7 +656,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.codec_name = "twl6040-codec",
 
 		.no_pcm = 1, /* don't create ALSA pcm for this */
-		.init = sdp4430_twl6040_init,
+		.init = sdp4430_twl6040_init_hs,
 		.ops = &sdp4430_mcpdm_ops,
 		.be_id = OMAP_ABE_DAI_PDM_DL1,
 	},
@@ -682,6 +689,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.codec_name = "twl6040-codec",
 
 		.no_pcm = 1, /* don't create ALSA pcm for this */
+		.init = sdp4430_twl6040_init_hf,
 		.ops = &sdp4430_mcpdm_ops,
 		.be_id = OMAP_ABE_DAI_PDM_DL2,
 	},
