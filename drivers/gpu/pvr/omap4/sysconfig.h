@@ -55,7 +55,7 @@
 
 #if defined(__linux__)
 #define	SYS_SGX_DEV_NAME	"omap_gpu"
-#endif
+#endif	
 
  
 #endif	
