@@ -26,7 +26,7 @@
 #include <linux/device.h>
 #include <linux/delay.h>
 #include <linux/kdev_t.h>
-#include <linux/delay.h>
+
 #include <linux/usb/composite.h>
 
 
@@ -88,8 +88,6 @@ static ssize_t enable_store(
 	struct usb_composite_driver	*driver = f->config->cdev->driver;
 	int value;
 
-	printk(KERN_DEBUG "usb enable_store, f : %s, enable_function : %p\n", f->name, driver->enable_function);
-
 	sscanf(buf, "%d", &value);
 	if (driver->enable_function)
 		driver->enable_function(f, value);
@@ -103,8 +101,6 @@ static DEVICE_ATTR(enable, S_IRUGO | S_IWUSR, enable_show, enable_store);
 
 void usb_function_set_enabled(struct usb_function *f, int enabled)
 {
-	printk("usb usb_function_set_enabled function:%s, enabled:%d",
-		f->name, enabled);
 	f->disabled = !enabled;
 	kobject_uevent(&f->dev->kobj, KOBJ_CHANGE);
 }
@@ -113,13 +109,13 @@ void usb_function_set_enabled(struct usb_function *f, int enabled)
 void usb_composite_force_reset(struct usb_composite_dev *cdev)
 {
 	unsigned long			flags;
+
 	spin_lock_irqsave(&cdev->lock, flags);
 	/* force reenumeration */
-
-	if (cdev && cdev->gadget && cdev->gadget->speed != USB_SPEED_UNKNOWN) {
-#if 0 
-	if (cdev->gadget && cdev->gadget->speed != USB_SPEED_UNKNOWN) {
+	if (cdev && cdev->gadget &&
+			cdev->gadget->speed != USB_SPEED_UNKNOWN) {
 		/* avoid sending a disconnect switch event until after we disconnect */
+#if 0
 		cdev->mute_switch = 1;
 #endif
 		spin_unlock_irqrestore(&cdev->lock, flags);
@@ -161,14 +157,8 @@ int usb_add_function(struct usb_configuration *config,
 		goto done;
 
 	index = atomic_inc_return(&cdev->driver->function_count);
-#ifdef CONFIG_USB_PERSONALITY
-       function->disabled= 0; //start enabling
-	function->dev = device_create(cdev->driver->class, NULL,
-		MKDEV(0, index), function, function->name);
-#else
 	function->dev = device_create(cdev->driver->class, NULL,
 		MKDEV(0, index), NULL, function->name);
-#endif
 	if (IS_ERR(function->dev))
 		return PTR_ERR(function->dev);
 
@@ -177,9 +167,8 @@ int usb_add_function(struct usb_configuration *config,
 		device_destroy(cdev->driver->class, MKDEV(0, index));
 		return value;
 	}
-#ifndef CONFIG_USB_PERSONALITY
 	dev_set_drvdata(function->dev, function);
-#endif
+
 	function->config = config;
 	list_add_tail(&function->list, &config->functions);
 
@@ -352,10 +341,8 @@ static int config_buf(struct usb_configuration *config,
 			descriptors = f->hs_descriptors;
 		else
 			descriptors = f->descriptors;
-#ifndef CONFIG_USB_PERSONALITY
 		if (f->disabled || !descriptors || descriptors[0] == NULL)
 			continue;
-#endif
 		status = usb_descriptor_fillbuf(next, len,
 			(const struct usb_descriptor_header **) descriptors);
 		if (status < 0)
@@ -528,10 +515,8 @@ static int set_config(struct usb_composite_dev *cdev,
 
 		if (!f)
 			break;
-#ifndef CONFIG_USB_PERSONALITY
 		if (f->disabled)
 			continue;
-#endif
 
 		/*
 		 * Record which endpoints are used by the function. This is used
@@ -1037,7 +1022,8 @@ unknown:
 		case USB_RECIP_INTERFACE:
 			if (cdev->config == NULL)
 				return value;
-
+			if (!cdev->config || w_index >= MAX_CONFIG_INTERFACES)
+				break;
 			f = cdev->config->interface[intf];
 			break;
 
@@ -1169,13 +1155,6 @@ composite_unbind(struct usb_gadget *gadget)
 			if (f->unbind) {
 				DBG(cdev, "unbind function '%s'/%p\n",
 						f->name, f);
-#ifdef CONFIG_USB_PERSONALITY
-			f->disabled = 1;	//start disabling
-			if (!IS_ERR(f->dev)) {
-				device_remove_file(f->dev, &dev_attr_enable);
-				device_destroy(cdev->driver->class, f->dev->devt);
-			}
-#endif
 				f->unbind(c, f);
 				/* may free memory for "f" */
 			}
@@ -1359,21 +1338,16 @@ fail:
 
 /*-------------------------------------------------------------------------*/
 
-static int suspend_counter = 0;
-static int resume_counter = 0;
-
 static void
 composite_suspend(struct usb_gadget *gadget)
 {
 	struct usb_composite_dev	*cdev = get_gadget_data(gadget);
 	struct usb_function		*f;
-	suspend_counter++;
-	resume_counter = 0;
 
 	/* REVISIT:  should we have config level
 	 * suspend/resume callbacks?
 	 */
-	if (suspend_counter == 1) { DBG(cdev, "suspend\n"); }
+	DBG(cdev, "suspend\n");
 	if (cdev->config) {
 		list_for_each_entry(f, &cdev->config->functions, list) {
 			if (f->suspend)
@@ -1391,13 +1365,11 @@ composite_resume(struct usb_gadget *gadget)
 {
 	struct usb_composite_dev	*cdev = get_gadget_data(gadget);
 	struct usb_function		*f;
-	resume_counter++;
-	suspend_counter = 0;
 
 	/* REVISIT:  should we have config level
 	 * suspend/resume callbacks?
 	 */
-	if (resume_counter == 1) { DBG(cdev, "resume\n"); }
+	DBG(cdev, "resume\n");
 	if (composite->resume)
 		composite->resume(cdev);
 	if (cdev->config) {
@@ -1494,5 +1466,4 @@ void usb_composite_unregister(struct usb_composite_driver *driver)
 	if (composite != driver)
 		return;
 	usb_gadget_unregister_driver(&composite_driver);
-	class_destroy(driver->class);
 }
