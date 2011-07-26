@@ -46,10 +46,10 @@ static struct {
 	struct platform_device *pdev;
 	int		ctx_id;
 
-	struct clk	*dss_ick;
+	struct clk      *dss_ick;
 	struct clk	*dss1_fck;
 	struct clk	*dss2_fck;
-	struct clk	*dss_54m_fck;
+	struct clk      *dss_54m_fck;
 	struct clk	*dss_96m_fck;
 	unsigned	num_clks_enabled;
 
@@ -76,6 +76,7 @@ MODULE_PARM_DESC(def_disp_name, "default display name");
 unsigned int dss_debug;
 module_param_named(debug, dss_debug, bool, 0644);
 #endif
+
 
 /* CONTEXT */
 static int dss_get_ctx_id(void)
@@ -183,7 +184,7 @@ static int dss_get_clock(struct clk **clock, const char *clk_name)
 	if (cpu_is_omap44xx())
 		clk = clk_get(NULL, clk_name);
 	else
-		clk = clk_get(&core.pdev->dev, clk_name);
+	clk = clk_get(&core.pdev->dev, clk_name);
 
 	if (IS_ERR(clk)) {
 		DSSERR("can't get clock %s", clk_name);
@@ -376,7 +377,6 @@ void dss_opt_clock_disable()
 	clk_disable(core.dss1_fck);
 	clk_disable(core.dss_96m_fck);
 }
-
 static void dss_clk_disable_no_ctx(enum dss_clock clks)
 {
 	unsigned num_clks;
@@ -499,7 +499,6 @@ struct regulator *dss_get_vdda_dac(void)
 
 	return reg;
 }
-
 /* DEBUGFS */
 #if defined(CONFIG_DEBUG_FS) && defined(CONFIG_OMAP2_DSS_DEBUG_SUPPORT)
 static void dss_debug_dump_clocks(struct seq_file *s)
@@ -510,8 +509,6 @@ static void dss_debug_dump_clocks(struct seq_file *s)
 		dispc_dump_clocks(s);
 	}
 #ifdef CONFIG_OMAP2_DSS_DSI
-	dsi1_dump_clocks(s);
-	dsi2_dump_clocks(s);
 #endif
 }
 
@@ -557,10 +554,9 @@ static int dss_initialize_debugfs(void)
 	debugfs_create_file("dsi1_irq", S_IRUGO, dss_debugfs_dir,
 			&dsi1_dump_irqs, &dss_debug_fops);
 	if (cpu_is_omap44xx())
-		debugfs_create_file("dsi2_irq", S_IRUGO, dss_debugfs_dir,
-			&dsi2_dump_irqs, &dss_debug_fops);
+			debugfs_create_file("dsi2_irq", S_IRUGO, dss_debugfs_dir,
+					&dsi2_dump_irqs, &dss_debug_fops);
 #endif
-
 	debugfs_create_file("dss", S_IRUGO, dss_debugfs_dir,
 			&dss_dump_regs, &dss_debug_fops);
 	debugfs_create_file("dispc", S_IRUGO, dss_debugfs_dir,
@@ -618,11 +614,10 @@ static int omap_dss_probe(struct platform_device *pdev)
 	if (cpu_is_omap44xx())
 		dss_init_writeback(pdev); /*Write back init*/
 #ifdef HWMOD
-	if (!cpu_is_omap44xx()) {
+	if (!cpu_is_omap44xx())
 		r = dss_get_clocks();
 		if (r)
 			goto err_clocks;
-	}
 
 	core.ctx_id = dss_get_ctx_id();
 	DSSDBG("initial ctx id %u\n", core.ctx_id);
@@ -664,6 +659,7 @@ static int omap_dss_probe(struct platform_device *pdev)
 			goto err_sdi;
 		}
 	}
+#endif
 
 	if (!cpu_is_omap24xx()) {
 		r = dsi_init(pdev);
@@ -680,6 +676,8 @@ static int omap_dss_probe(struct platform_device *pdev)
 			}
 		}
 	}
+
+#ifdef HWMOD
 #ifdef CONFIG_OMAP2_DSS_HDMI
 	r = hdmi_init(pdev);
 	if (r) {
@@ -717,27 +715,28 @@ static int omap_dss_probe(struct platform_device *pdev)
 err_register:
 	dss_uninitialize_debugfs();
 err_debugfs:
-#ifdef HWMOD
+#ifdef HWMOD 
 #ifdef CONFIG_OMAP2_DSS_HDMI
 	hdmi_exit();
 err_hdmi:
 #endif
 	if (cpu_is_omap44xx())
 		dsi2_exit();
+#endif
 err_dsi2:
 	if (!cpu_is_omap24xx())
 		dsi_exit();
 err_dsi1:
 	if (cpu_is_omap34xx())
 		sdi_exit();
+
+#ifdef HWMOD
 err_sdi:
-	venc_exit();
 err_venc:
 	dispc_exit();
 err_dispc:
 	dpi_exit();
 err_dpi:
-	rfbi_exit();
 err_rfbi:
 	dss_exit();
 err_dss:
@@ -755,14 +754,11 @@ static int omap_dss_remove(struct platform_device *pdev)
 	int c;
 
 	dss_uninitialize_debugfs();
-
-	venc_exit();
 #ifdef CONFIG_OMAP2_DSS_HDMI
 	hdmi_exit();
 #endif
 	dispc_exit();
 	dpi_exit();
-	rfbi_exit();
 	if (!cpu_is_omap24xx()) {
 		dsi_exit();
 		if (cpu_is_omap44xx())
@@ -906,6 +902,7 @@ static int omap_dispchw_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#if 0 
 static int omap_dsihw_probe(struct platform_device *pdev)
 {
 	int r;
@@ -947,6 +944,7 @@ static int omap_dsi2hw_remove(struct platform_device *pdev)
 	dsi2_exit();
 	return 0;
 }
+#endif
 
 #ifdef CONFIG_OMAP2_DSS_HDMI
 static int omap_hdmihw_probe(struct platform_device *pdev)
@@ -969,7 +967,6 @@ static int omap_hdmihw_remove(struct platform_device *pdev)
 	return 0;
 }
 #endif
-
 static struct platform_driver omap_dss_driver = {
 	.probe          = omap_dss_probe,
 	.remove         = omap_dss_remove,
@@ -1011,6 +1008,7 @@ static struct platform_driver omap_dispchw_driver = {
 	},
 };
 
+#if 0 
 static struct platform_driver omap_dsihw_driver = {
 	.probe          = omap_dsihw_probe,
 	.remove         = omap_dsihw_remove,
@@ -1034,6 +1032,7 @@ static struct platform_driver omap_dsi2hw_driver = {
 		.owner  = THIS_MODULE,
 	},
 };
+#endif
 
 #ifdef CONFIG_OMAP2_DSS_HDMI
 static struct platform_driver omap_hdmihw_driver = {
@@ -1123,6 +1122,7 @@ static int dss_driver_probe(struct device *dev)
 	dss_init_device(core.pdev, dssdev);
 
 	force = pdata->default_device == dssdev;
+
 	dss_recheck_connections(dssdev, force);
 
 	r = dssdrv->probe(dssdev);
@@ -1162,13 +1162,11 @@ int omap_dss_register_driver(struct omap_dss_driver *dssdriver)
 	dssdriver->driver.bus = &dss_bus_type;
 	dssdriver->driver.probe = dss_driver_probe;
 	dssdriver->driver.remove = dss_driver_remove;
-
 	if (dssdriver->get_resolution == NULL)
 		dssdriver->get_resolution = omapdss_default_get_resolution;
 	if (dssdriver->get_recommended_bpp == NULL)
 		dssdriver->get_recommended_bpp =
 			omapdss_default_get_recommended_bpp;
-
 	return driver_register(&dssdriver->driver);
 }
 EXPORT_SYMBOL(omap_dss_register_driver);
@@ -1198,7 +1196,7 @@ static void reset_device(struct device *dev, int check)
 			if (*dev_p) {
 				WARN("%s: struct device fields will be "
 						"discarded\n",
-					__func__);
+				     __func__);
 				break;
 			}
 			dev_p++;
@@ -1261,7 +1259,6 @@ static int omap_dss_bus_register(void)
 	core.dss_early_suspend_info.level = EARLY_SUSPEND_LEVEL_DISABLE_FB;
 	register_early_suspend(&core.dss_early_suspend_info);
 #endif
-
 	return 0;
 }
 
@@ -1312,7 +1309,6 @@ static void __exit omap_dss_exit(void)
 		regulator_put(core.vdda_dac_reg);
 		core.vdda_dac_reg = NULL;
 	}
-
 	platform_driver_unregister(&omap_dss_driver);
 
 	omap_dss_bus_unregister();
@@ -1330,8 +1326,6 @@ static int __init omap_dss_init2(void)
 {
 	platform_driver_register(&omap_dsshw_driver);
 	platform_driver_register(&omap_dispchw_driver);
-	platform_driver_register(&omap_dsihw_driver);
-	platform_driver_register(&omap_dsi2hw_driver);
 #ifdef CONFIG_OMAP2_DSS_HDMI
 	platform_driver_register(&omap_hdmihw_driver);
 #endif

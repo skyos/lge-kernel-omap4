@@ -21,87 +21,138 @@
  */
 
 #include <linux/module.h>
+#include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/errno.h>
 #include <linux/input.h>
 #include <linux/interrupt.h>
+#include <linux/slab.h>
 #include <linux/platform_device.h>
 #include <linux/i2c/twl.h>
 
 #define PWR_PWRON_IRQ (1 << 0)
 
-#define STS_HW_CONDITIONS 0xf
+//#define STS_HW_CONDITIONS 0xf
+#define STS_HW_CONDITIONS 0x2
 
-static irqreturn_t powerbutton_irq(int irq, void *_pwr)
+struct twl4030_pwrbutton_data {
+	int irq;
+
+	struct work_struct irq_work;
+	struct workqueue_struct	 *irq_wq;
+	struct input_dev *input_dev;
+};
+
+static void powerbutton_work_func(struct work_struct *work)
 {
-	struct input_dev *pwr = _pwr;
 	int err;
-	u8 value;
+	u8 value = 0;
+	static int previousKey = 0;
+	struct twl4030_pwrbutton_data *data = container_of(work, struct twl4030_pwrbutton_data, irq_work);
 
-	err = twl_i2c_read_u8(TWL4030_MODULE_PM_MASTER, &value,
-				STS_HW_CONDITIONS);
+	err = twl_i2c_read_u8(TWL4030_MODULE_PM_MASTER, &value,	STS_HW_CONDITIONS);
+
+	printk("%s [%d][%d][%d]\n", __func__, err, !(value & PWR_PWRON_IRQ),previousKey);
 	if (!err)  {
-		input_report_key(pwr, KEY_POWER, value & PWR_PWRON_IRQ);
-		input_sync(pwr);
+		if((!(value & PWR_PWRON_IRQ)) == 0 && previousKey == 0)
+		{
+			input_report_key(data->input_dev, KEY_POWER, 1);
+			input_sync(data->input_dev);
+			input_report_key(data->input_dev, KEY_POWER, 0);
+			input_sync(data->input_dev);
+			printk("%s power key is not press", __func__);
+		}
+		else
+		{	
+			input_report_key(data->input_dev, KEY_POWER, !(value & PWR_PWRON_IRQ));
+			input_sync(data->input_dev);
+		}
+		previousKey = !(value & PWR_PWRON_IRQ);
 	} else {
-		dev_err(pwr->dev.parent, "twl4030: i2c error %d while reading"
+		dev_err(data->input_dev->dev.parent, "twl4030: i2c error %d while reading"
 			" TWL4030 PM_MASTER STS_HW_CONDITIONS register\n", err);
-	}
+	}	
+}
 
-	return IRQ_HANDLED;
+
+static irqreturn_t powerbutton_irq(int irq, void *dev_id)
+{
+	struct twl4030_pwrbutton_data *data = dev_id;
+
+	queue_work(data->irq_wq,&data->irq_work);
+
+	return IRQ_HANDLED; 			
 }
 
 static int __devinit twl4030_pwrbutton_probe(struct platform_device *pdev)
 {
-	struct input_dev *pwr;
-	int irq = platform_get_irq(pdev, 0);
+	struct twl4030_pwrbutton_data *data;
 	int err;
 
-	pwr = input_allocate_device();
-	if (!pwr) {
+	data = kzalloc(sizeof(struct twl4030_pwrbutton_data), GFP_KERNEL);
+	if (!data) {
+		return -ENOMEM;
+	}
+
+	memset(data, 0x00, sizeof(struct twl4030_pwrbutton_data));
+
+
+	data->irq = platform_get_irq(pdev, 0);
+	
+	data->input_dev = input_allocate_device();
+	if (!data->input_dev) {
 		dev_dbg(&pdev->dev, "Can't allocate power button\n");
 		return -ENOMEM;
 	}
 
-	pwr->evbit[0] = BIT_MASK(EV_KEY);
-	pwr->keybit[BIT_WORD(KEY_POWER)] = BIT_MASK(KEY_POWER);
-	pwr->name = "twl4030_pwrbutton";
-	pwr->phys = "twl4030_pwrbutton/input0";
-	pwr->dev.parent = &pdev->dev;
+	data->input_dev->evbit[0] = BIT_MASK(EV_KEY);
+	data->input_dev->keybit[BIT_WORD(KEY_POWER)] = BIT_MASK(KEY_POWER);
+	data->input_dev->name = "twl4030_pwrbutton";
+	data->input_dev->phys = "twl4030_pwrbutton/input0";
+	data->input_dev->dev.parent = &pdev->dev;
 
-	err = request_threaded_irq(irq, NULL, powerbutton_irq,
-			IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING,
-			"twl4030_pwrbutton", pwr);
-	if (err < 0) {
-		dev_dbg(&pdev->dev, "Can't get IRQ for pwrbutton: %d\n", err);
-		goto free_input_dev;
+
+	INIT_WORK(&data->irq_work, powerbutton_work_func);
+
+	data->irq_wq = create_singlethread_workqueue("pwrbutton_wq");
+
+	if (!data->irq_wq)
+	{
+		goto free_irq;
 	}
 
-	err = input_register_device(pwr);
+	err = request_irq(data->irq, powerbutton_irq, IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING, "twl4030_pwrbutton", data);
+	irq_set_affinity(data->irq, cpumask_of(0));
+
+	err = input_register_device(data->input_dev);
 	if (err) {
 		dev_dbg(&pdev->dev, "Can't register power button: %d\n", err);
 		goto free_irq;
 	}
 
-	platform_set_drvdata(pdev, pwr);
+	platform_set_drvdata(pdev, data);
 
 	return 0;
 
 free_irq:
-	free_irq(irq, NULL);
+	free_irq(data->irq, NULL);
 free_input_dev:
-	input_free_device(pwr);
+	input_free_device(data->input_dev);
 	return err;
 }
 
 static int __devexit twl4030_pwrbutton_remove(struct platform_device *pdev)
 {
-	struct input_dev *pwr = platform_get_drvdata(pdev);
-	int irq = platform_get_irq(pdev, 0);
+	struct twl4030_pwrbutton_data *data = platform_get_drvdata(pdev);
 
-	free_irq(irq, pwr);
-	input_unregister_device(pwr);
+	free_irq(data->irq, data);
+
+	if (data->irq_wq)
+		destroy_workqueue(data->irq_wq);
+
+	
+	input_unregister_device(data->input_dev);
 
 	return 0;
 }

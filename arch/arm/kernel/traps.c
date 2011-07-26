@@ -20,6 +20,7 @@
 #include <linux/hardirq.h>
 #include <linux/kdebug.h>
 #include <linux/module.h>
+#include <linux/reboot.h>
 #include <linux/kexec.h>
 #include <linux/delay.h>
 #include <linux/init.h>
@@ -30,9 +31,14 @@
 #include <asm/unistd.h>
 #include <asm/traps.h>
 #include <asm/unwind.h>
+#if CONFIG_ARCH_OMAP4
+#include <plat/lge_err_handler.h>
+#endif
 
 #include "ptrace.h"
 #include "signal.h"
+
+#include <linux/i2c/twl.h>
 
 static const char *handler[]= { "prefetch abort", "data abort", "address exception", "interrupt" };
 
@@ -267,6 +273,17 @@ void die(const char *str, struct pt_regs *regs, int err)
 {
 	struct thread_info *thread = current_thread_info();
 	int ret;
+#if CONFIG_ARCH_OMAP4
+	static bool first_enter = false;
+
+	if(in_interrupt() || first_enter == true)
+	{
+		emergency_restart();
+//		twl_i2c_write_u8(0x14, 0x47, 0x06); 	// PMIC reset
+	}
+
+	first_enter = true;
+#endif
 
 	oops_enter();
 
@@ -281,8 +298,24 @@ void die(const char *str, struct pt_regs *regs, int err)
 	bust_spinlocks(0);
 	add_taint(TAINT_DIE);
 	spin_unlock_irq(&die_lock);
-	oops_exit();
+#if CONFIG_ARCH_OMAP4
 
+	lge_store_ciq_reset(1, LGE_NVDATA_IQ_RESET_EXCEPTION);
+
+	if(lge_is_ap_crash_dump_enabled() == 1)
+	{
+		// Need to show crash
+		lge_mark_ap_crash();
+		lge_dump_ap_crash();
+	}
+	else
+	{
+		// Silent Reset
+		lge_user_reset();
+		lge_dump_ap_crash();
+	}
+#endif
+	oops_exit();
 	if (in_interrupt())
 		panic("Fatal exception in interrupt");
 	if (panic_on_oops)

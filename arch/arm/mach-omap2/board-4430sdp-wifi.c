@@ -27,8 +27,16 @@
 #include <asm/io.h>
 #include <linux/wifi_tiwlan.h>
 
-#include "board-4430sdp-wifi.h"
 #include "mux.h"
+
+#if 1	
+#define SDP4430_WIFI_PMENA_GPIO  168
+#define SDP4430_WIFI_IRQ_GPIO    167
+#else
+#define SDP4430_WIFI_PMENA_GPIO	 54
+#define SDP4430_WIFI_IRQ_GPIO	 53
+#endif
+
 
 static int sdp4430_wifi_cd;		/* WIFI virtual 'card detect' status */
 static void (*wifi_status_cb)(int card_present, void *dev_id);

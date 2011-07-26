@@ -266,7 +266,7 @@
 #include <linux/crypto.h>
 #include <linux/time.h>
 #include <linux/slab.h>
-#include <linux/uid_stat.h>
+//#include <linux/uid_stat.h>
 
 #include <net/icmp.h>
 #include <net/tcp.h>
@@ -1104,8 +1104,8 @@ out:
 	TCP_CHECK_TIMER(sk);
 	release_sock(sk);
 
-	if (copied > 0)
-		uid_stat_tcp_snd(current_uid(), copied);
+//	if (copied > 0)
+//		uid_stat_tcp_snd(current_uid(), copied);
 	return copied;
 
 do_fault:
@@ -1384,7 +1384,7 @@ int tcp_read_sock(struct sock *sk, read_descriptor_t *desc,
 	/* Clean up data we have read: This will do ACK frames. */
 	if (copied > 0) {
 		tcp_cleanup_rbuf(sk, copied);
-		uid_stat_tcp_rcv(current_uid(), copied);
+//		uid_stat_tcp_rcv(current_uid(), copied);
 	}
 
 	return copied;
@@ -1773,8 +1773,8 @@ skip_copy:
 	TCP_CHECK_TIMER(sk);
 	release_sock(sk);
 
-	if (copied > 0)
-		uid_stat_tcp_rcv(current_uid(), copied);
+//	if (copied > 0)
+//		uid_stat_tcp_rcv(current_uid(), copied);
 	return copied;
 
 out:
@@ -1784,8 +1784,8 @@ out:
 
 recv_urg:
 	err = tcp_recv_urg(sk, msg, len, flags);
-	if (err > 0)
-		uid_stat_tcp_rcv(current_uid(), err);
+//	if (err > 0)
+//		uid_stat_tcp_rcv(current_uid(), err);
 	goto out;
 }
 

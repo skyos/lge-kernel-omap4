@@ -39,6 +39,9 @@
 
 #define OMAP_MCBSP_RATES	(SNDRV_PCM_RATE_8000_96000)
 
+#define OMAP_MCBSP_TX_RETRY_MAX			20
+#define OMAP_MCBSP_TX_RETRY_GAP			500
+
 #define OMAP_MCBSP_SOC_SINGLE_S16_EXT(xname, xmin, xmax, \
 	xhandler_get, xhandler_put) \
 {	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, \
@@ -60,6 +63,9 @@ struct omap_mcbsp_data {
 	unsigned int			in_freq;
 	int				clk_div;
 	int				wlen;
+	int 			retry_cnt;
+	struct timer_list tx_retry_timer;
+	spinlock_t tx_retry_spinlock;
 };
 
 static struct omap_mcbsp_data mcbsp_data[NUM_LINKS];
@@ -174,6 +180,11 @@ static const unsigned long omap44xx_mcbsp_port[][2] = {
 static const unsigned long omap44xx_mcbsp_port[][2] = {};
 #endif
 
+// TEMPTEMP FOR DEBUGGING!!!
+static unsigned int s_buffer[1024] = {0,};
+static unsigned char s_id[1024] = {0,};
+static int s_buffer_cnt = 0;
+
 static void omap_mcbsp_set_threshold(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
@@ -285,6 +296,24 @@ static void omap_mcbsp_dai_shutdown(struct snd_pcm_substream *substream,
 	}
 }
 
+static void mcbsp_retry_timer_expiry(unsigned long param)
+{
+	int irq_status;
+	struct omap_mcbsp_data *mcbsp = (struct omap_mcbsp_data *)param;
+	unsigned int bus_id = (unsigned int)mcbsp->bus_id;
+	
+	irq_status = omap_mcbsp_recover_tx_underflow(bus_id);
+
+	if( irq_status ) printk(KERN_ERR "irq_status %d %d %d\n", bus_id, irq_status, mcbsp->retry_cnt);
+
+	if( irq_status || mcbsp->retry_cnt < OMAP_MCBSP_TX_RETRY_MAX ){
+		spin_lock(&mcbsp->tx_retry_spinlock);
+		mcbsp->retry_cnt++;
+		mcbsp->tx_retry_timer.expires = jiffies + msecs_to_jiffies(OMAP_MCBSP_TX_RETRY_GAP);
+		add_timer(&mcbsp->tx_retry_timer);
+		spin_unlock(&mcbsp->tx_retry_spinlock);
+	}
+}
 static int omap_mcbsp_dai_trigger(struct snd_pcm_substream *substream, int cmd,
 				  struct snd_soc_dai *cpu_dai)
 {
@@ -297,11 +326,28 @@ static int omap_mcbsp_dai_trigger(struct snd_pcm_substream *substream, int cmd,
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 		mcbsp_data->active++;
 		omap_mcbsp_start(mcbsp_data->bus_id, play, !play);
+
+		if( !play ){	// Sometimes, TX channel is broken. So, I check TX status for 3s, and when TX underflow is occured, I recover McBSP TX channel.
+			spin_lock(&mcbsp_data->tx_retry_spinlock);
+			mcbsp_data->retry_cnt = 0;
+			mcbsp_data->tx_retry_timer.function = mcbsp_retry_timer_expiry;
+			mcbsp_data->tx_retry_timer.data = mcbsp_data;
+			mcbsp_data->tx_retry_timer.expires = jiffies + msecs_to_jiffies(OMAP_MCBSP_TX_RETRY_GAP);
+			add_timer(&mcbsp_data->tx_retry_timer);
+			spin_unlock(&mcbsp_data->tx_retry_spinlock);
+		}
 		break;
 
 	case SNDRV_PCM_TRIGGER_STOP:
+// TEMPTEMP FOR DEBUGGING!!!
+		s_buffer[s_buffer_cnt] = omap_mcbsp_get_irqstatus(mcbsp_data->bus_id);
+		s_id[s_buffer_cnt] = mcbsp_data->bus_id;
+		s_buffer_cnt = (s_buffer_cnt+1)%1024;
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		spin_lock(&mcbsp_data->tx_retry_spinlock);
+		del_timer(&mcbsp_data->tx_retry_timer);
+		spin_unlock(&mcbsp_data->tx_retry_spinlock);
 		omap_mcbsp_stop(mcbsp_data->bus_id, play, !play);
 		mcbsp_data->active--;
 		break;
@@ -458,12 +504,14 @@ static int omap_mcbsp_dai_hw_params(struct snd_pcm_substream *substream,
 
 	switch (params_format(params)) {
 	case SNDRV_PCM_FORMAT_S16_LE:
+	case SNDRV_PCM_FORMAT_S32_LE: // patched 20101130
 		/* Set word lengths */
 		regs->rcr2	|= RWDLEN2(OMAP_MCBSP_WORD_16);
 		regs->rcr1	|= RWDLEN1(OMAP_MCBSP_WORD_16);
 		regs->xcr2	|= XWDLEN2(OMAP_MCBSP_WORD_16);
 		regs->xcr1	|= XWDLEN1(OMAP_MCBSP_WORD_16);
 		break;
+#if 0 // patched 20101130
 	case SNDRV_PCM_FORMAT_S32_LE:
 		/* Set word lengths */
 		regs->rcr2	|= RWDLEN2(OMAP_MCBSP_WORD_32);
@@ -471,6 +519,7 @@ static int omap_mcbsp_dai_hw_params(struct snd_pcm_substream *substream,
 		regs->xcr2	|= XWDLEN2(OMAP_MCBSP_WORD_32);
 		regs->xcr1	|= XWDLEN1(OMAP_MCBSP_WORD_32);
 		break;
+#endif
 	default:
 		/* Unsupported PCM format */
 		return -EINVAL;
@@ -502,6 +551,10 @@ static int omap_mcbsp_dai_hw_params(struct snd_pcm_substream *substream,
 	case SND_SOC_DAIFMT_DSP_B:
 		regs->srgr2	|= FPER(framesize - 1);
 		regs->srgr1	|= FWID(0);
+		break;
+	case SND_SOC_DAIFMT_PCM:
+		regs->srgr2	|= FPER(framesize - 1);
+		regs->srgr1	|= FWID(1-1);		
 		break;
 	}
 
@@ -542,6 +595,13 @@ static int omap_mcbsp_dai_set_dai_fmt(struct snd_soc_dai *cpu_dai,
 	}
 
 	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
+	case SND_SOC_DAIFMT_PCM:
+		/* 1-bit data delay */
+		regs->rcr2	|= RDATDLY(1);
+		regs->xcr2	|= XDATDLY(1);
+//		regs->xccr  |= 1 << 5;
+//		regs->spcr1	|= RJUST(2);
+		break;		
 	case SND_SOC_DAIFMT_I2S:
 		/* 1-bit data delay */
 		regs->rcr2	|= RDATDLY(1);
@@ -774,6 +834,8 @@ static struct snd_soc_dai_ops mcbsp_dai_ops = {
 static int mcbsp_dai_probe(struct snd_soc_dai *dai)
 {
 	mcbsp_data[dai->id].bus_id = dai->id;
+	spin_lock_init(&mcbsp_data[dai->id].tx_retry_spinlock);
+	init_timer(&mcbsp_data[dai->id].tx_retry_timer);
 	snd_soc_dai_set_drvdata(dai, &mcbsp_data[dai->id].bus_id);
 	return 0;
 }
@@ -928,13 +990,46 @@ int omap_mcbsp_st_add_controls(struct snd_soc_codec *codec, int mcbsp_id)
 }
 EXPORT_SYMBOL_GPL(omap_mcbsp_st_add_controls);
 
+// TEMPTEMP FOR DEBUGGING!!!
+static int s_cmd = 0;
+
+static ssize_t omap_mcbsp_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	if( s_cmd == 1024 ){
+		return sprintf(buf, "%d\n", s_buffer_cnt);
+	}
+
+	if( s_cmd >= 0 && s_cmd < 1024 )
+		return sprintf(buf, "%d %d\n", s_id[s_cmd], s_buffer[s_cmd]);
+	
+	strcpy(buf, "\n");
+	return 1;
+}
+
+static ssize_t omap_mcbsp_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	int cmd_number;
+	sscanf(buf,"%d", &cmd_number);
+	s_cmd = cmd_number;
+	return size;
+}
+
+static DEVICE_ATTR(irqstatus, S_IRUGO | S_IWUSR, omap_mcbsp_show, omap_mcbsp_store);
+
 static __devinit int asoc_mcbsp_probe(struct platform_device *pdev)
 {
+// TEMPTEMP FOR DEBUGGING!!!
+	int retval;
+	retval = device_create_file(&pdev->dev, &dev_attr_irqstatus);
 	return snd_soc_register_dai(&pdev->dev, &omap_mcbsp_dai);
 }
 
 static int __devexit asoc_mcbsp_remove(struct platform_device *pdev)
 {
+// TEMPTEMP FOR DEBUGGING!!!
+	device_remove_file(&pdev->dev, &dev_attr_irqstatus);
 	snd_soc_unregister_dai(&pdev->dev);
 	return 0;
 }

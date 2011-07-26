@@ -2588,10 +2588,20 @@ static int ip_route_output_slow(struct net *net, struct rtable **rp,
 			goto out;
 
 		/* RACE: Check return value of inet_select_addr instead. */
+  /* - instead of allowing a route to be created on a not UPed device, report -ENETUNREACH immediately. */
+#if 0 //origianl code		
 		if (__in_dev_get_rtnl(dev_out) == NULL) {
 			dev_put(dev_out);
 			goto out;	/* Wrong error code */
 		}
+#else
+		if(!(dev_out->flags & IFF_UP) || !__in_dev_get_rtnl(dev_out)) {
+			//printk(KERN_ERR "[wo0ngs] ipv4: dont create routes on down devices\n");
+			dev_put(dev_out);
+			err = -ENETUNREACH;
+			goto out;     /* Wrong error code */
+		}
+#endif
 
 		if (ipv4_is_local_multicast(oldflp->fl4_dst) ||
 		    oldflp->fl4_dst == htonl(0xFFFFFFFF)) {

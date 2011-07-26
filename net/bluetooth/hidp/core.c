@@ -122,7 +122,7 @@ static void __hidp_copy_session(struct hidp_session *session, struct hidp_connin
 		ci->product = session->input->id.product;
 		ci->version = session->input->id.version;
 		if (session->input->name)
-			strncpy(ci->name, session->input->name, 128);
+			strncpy(ci->name, session->input->name, strlen(session->input->name)+1);
 		else
 			strncpy(ci->name, "HID Boot Device", 128);
 	}
@@ -131,7 +131,7 @@ static void __hidp_copy_session(struct hidp_session *session, struct hidp_connin
 		ci->vendor  = session->hid->vendor;
 		ci->product = session->hid->product;
 		ci->version = session->hid->version;
-		strncpy(ci->name, session->hid->name, 128);
+		strncpy(ci->name, session->hid->name, 127);
 	}
 }
 
@@ -790,9 +790,9 @@ static int hidp_setup_hid(struct hidp_session *session,
 	hid->version = req->version;
 	hid->country = req->country;
 
-	strncpy(hid->name, req->name, 128);
-	strncpy(hid->phys, batostr(&src), 64);
-	strncpy(hid->uniq, batostr(&dst), 64);
+	strncpy(hid->name, req->name, strlen(req->name)+1);
+	strncpy(hid->phys, batostr(&src), strlen(batostr(&src))+1);
+	strncpy(hid->uniq, batostr(&dst), strlen(batostr(&dst))+1);
 
 	hid->dev.parent = hidp_get_device(session);
 	hid->ll_driver = &hidp_hid_driver;

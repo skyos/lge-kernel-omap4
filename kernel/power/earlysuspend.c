@@ -23,11 +23,15 @@
 
 #include "power.h"
 
+#define LGE_EARLYSUSPEND_DEBUG  1  
+int tiler_memory_free_flag=0;	   
+
 enum {
 	DEBUG_USER_STATE = 1U << 0,
 	DEBUG_SUSPEND = 1U << 2,
 };
-static int debug_mask = DEBUG_USER_STATE;
+//static int debug_mask = DEBUG_USER_STATE;  
+static int debug_mask = DEBUG_USER_STATE|DEBUG_SUSPEND;  
 module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 static DEFINE_MUTEX(early_suspend_lock);
@@ -103,6 +107,7 @@ static void early_suspend(struct work_struct *work)
 		pr_info("early_suspend: sync\n");
 
 	sys_sync();
+	tiler_memory_free_flag=1;	
 abort:
 	spin_lock_irqsave(&state_lock, irqflags);
 	if (state == SUSPEND_REQUESTED_AND_SUSPENDED)
@@ -115,6 +120,8 @@ static void late_resume(struct work_struct *work)
 	struct early_suspend *pos;
 	unsigned long irqflags;
 	int abort = 0;
+
+	tiler_memory_free_flag=0;	
 
 	mutex_lock(&early_suspend_lock);
 	spin_lock_irqsave(&state_lock, irqflags);
@@ -152,6 +159,15 @@ void request_suspend_state(suspend_state_t new_state)
 		struct rtc_time tm;
 		getnstimeofday(&ts);
 		rtc_time_to_tm(ts.tv_sec, &tm);
+#if LGE_EARLYSUSPEND_DEBUG		
+		pr_info("request_suspend_state: %s (%d->%d) at %lld "
+			"(%d-%02d-%02d %02d:%02d:%02d.%09lu UTC) state[%d]\n",
+			new_state != PM_SUSPEND_ON ? "sleep" : "wakeup",
+			requested_suspend_state, new_state,
+			ktime_to_ns(ktime_get()),
+			tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+			tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec, state);
+#else
 		pr_info("request_suspend_state: %s (%d->%d) at %lld "
 			"(%d-%02d-%02d %02d:%02d:%02d.%09lu UTC)\n",
 			new_state != PM_SUSPEND_ON ? "sleep" : "wakeup",
@@ -159,7 +175,10 @@ void request_suspend_state(suspend_state_t new_state)
 			ktime_to_ns(ktime_get()),
 			tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
 			tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec);
+#endif
 	}
+
+	
 	if (!old_sleep && new_state != PM_SUSPEND_ON) {
 		state |= SUSPEND_REQUESTED;
 		queue_work(suspend_work_queue, &early_suspend_work);
@@ -168,6 +187,22 @@ void request_suspend_state(suspend_state_t new_state)
 		wake_lock(&main_wake_lock);
 		queue_work(suspend_work_queue, &late_resume_work);
 	}
+	else
+	{
+#if LGE_EARLYSUSPEND_DEBUG	
+		pr_info("request_suspend_state (case)[%d][%d]\n", old_sleep, new_state);
+#else
+		if (new_state != PM_SUSPEND_ON) {
+			state |= SUSPEND_REQUESTED;
+			queue_work(suspend_work_queue, &early_suspend_work);
+		} else if (new_state == PM_SUSPEND_ON) {
+			state &= ~SUSPEND_REQUESTED;
+			wake_lock(&main_wake_lock);
+			queue_work(suspend_work_queue, &late_resume_work);
+		}	
+#endif		
+	}
+
 	requested_suspend_state = new_state;
 	spin_unlock_irqrestore(&state_lock, irqflags);
 }

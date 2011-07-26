@@ -63,7 +63,12 @@
 /* omap_hwmod_list contains all registered struct omap_hwmods */
 static LIST_HEAD(omap_hwmod_list);
 
+#if 1//TI hsyoon 20110920
+static spinlock_t omap_hwmod_spinlock;
+unsigned long flags;
+#else
 static DEFINE_MUTEX(omap_hwmod_mutex);
+#endif
 
 /* mpu_oh: used to add/remove MPU initiator from sleepdep list */
 static struct omap_hwmod *mpu_oh;
@@ -306,9 +311,11 @@ static int _set_module_autoidle(struct omap_hwmod *oh, u8 autoidle,
  * Allow the hardware module @oh to send wakeups.  Returns -EINVAL
  * upon error or 0 upon success.
  */
-static int _enable_wakeup(struct omap_hwmod *oh)
+
+static int _set_enawakeup(struct omap_hwmod *oh, u8 enawakeup, u32 *v)
 {
-	u32 v, wakeup_mask;
+	u32 wakeup_mask;
+	u8 wakeup_shift;
 
 	if (!oh->class->sysc ||
 	    !(oh->class->sysc->sysc_flags & SYSC_HAS_ENAWAKEUP))
@@ -319,10 +326,47 @@ static int _enable_wakeup(struct omap_hwmod *oh)
 		return -EINVAL;
 	}
 
-	wakeup_mask = (0x1 << oh->class->sysc->sysc_fields->enwkup_shift);
+	wakeup_shift = oh->class->sysc->sysc_fields->enwkup_shift;
+	wakeup_mask = 0x1 << wakeup_shift;
+
+	*v &= ~wakeup_mask;
+	*v |= enawakeup << wakeup_shift;
+
+	return 0;
+}
+
+/**
+ * _enable_wakeup: set OCP_SYSCONFIG.ENAWAKEUP bit in the hardware
+ * @oh: struct omap_hwmod *
+ *
+ * Allow the hardware module @oh to send wakeups.  Returns -EINVAL
+ * upon error or 0 upon success.
+ */
+static int _enable_wakeup(struct omap_hwmod *oh)
+{
+	u32 v;
+
+	if (!oh->class->sysc)
+		return -EINVAL;
+
+	if (!(oh->class->sysc->sysc_flags & SYSC_HAS_ENAWAKEUP) ||
+		(oh->class->sysc->idlemodes & SIDLE_SMART_WKUP) ||
+		(oh->class->sysc->idlemodes & MSTANDBY_SMART_WKUP))
+		return -EINVAL;
+
+	if (!oh->class->sysc->sysc_fields) {
+		WARN(1, "omap_hwmod: %s: offset struct for sysconfig not provided in class\n", oh->name);
+		return -EINVAL;
+	}
 
 	v = oh->_sysc_cache;
-	v |= wakeup_mask;
+	if (oh->class->sysc->sysc_flags & SYSC_HAS_ENAWAKEUP)
+		_set_enawakeup(oh, 1, &v);
+	if (oh->class->sysc->idlemodes & SIDLE_SMART_WKUP)
+		_set_slave_idlemode(oh, HWMOD_IDLEMODE_SMART_WKUP, &v);
+	if (oh->class->sysc->idlemodes & MSTANDBY_SMART_WKUP)
+		_set_master_standbymode(oh, HWMOD_IDLEMODE_SMART_WKUP, &v);
+
 	_write_sysconfig(v, oh);
 
 	/* XXX test pwrdm_get_wken for this hwmod's subsystem */
@@ -339,12 +383,17 @@ static int _enable_wakeup(struct omap_hwmod *oh)
  * Prevent the hardware module @oh to send wakeups.  Returns -EINVAL
  * upon error or 0 upon success.
  */
+
 static int _disable_wakeup(struct omap_hwmod *oh)
 {
-	u32 v, wakeup_mask;
+	u32 v;
 
-	if (!oh->class->sysc ||
-	    !(oh->class->sysc->sysc_flags & SYSC_HAS_ENAWAKEUP))
+	if (!oh->class->sysc)
+		return -EINVAL;
+
+	if (!(oh->class->sysc->sysc_flags & SYSC_HAS_ENAWAKEUP) ||
+		(oh->class->sysc->idlemodes & SIDLE_SMART_WKUP) ||
+		(oh->class->sysc->idlemodes & MSTANDBY_SMART_WKUP))
 		return -EINVAL;
 
 	if (!oh->class->sysc->sysc_fields) {
@@ -352,10 +401,14 @@ static int _disable_wakeup(struct omap_hwmod *oh)
 		return -EINVAL;
 	}
 
-	wakeup_mask = (0x1 << oh->class->sysc->sysc_fields->enwkup_shift);
-
 	v = oh->_sysc_cache;
-	v &= ~wakeup_mask;
+	if (oh->class->sysc->sysc_flags & SYSC_HAS_ENAWAKEUP)
+		_set_enawakeup(oh, 0, &v);
+	if (oh->class->sysc->idlemodes & SIDLE_SMART_WKUP)
+		_set_slave_idlemode(oh, HWMOD_IDLEMODE_SMART, &v);
+	if (oh->class->sysc->idlemodes & MSTANDBY_SMART_WKUP)
+		_set_master_standbymode(oh, HWMOD_IDLEMODE_SMART_WKUP, &v);
+
 	_write_sysconfig(v, oh);
 
 	/* XXX test pwrdm_get_wken for this hwmod's subsystem */
@@ -672,9 +725,11 @@ static void __iomem *_find_mpu_rt_base(struct omap_hwmod *oh, u8 index)
  * as SWSUP_MSUSPEND, force the module out of master standby;
  * otherwise, configure it for smart-standby.  No return value.
  */
+
 static void _sysc_enable(struct omap_hwmod *oh)
 {
 	u8 s_idlemode = 0, m_idlemode = 0, a_idlemode = 0, sf;
+	u8 idlemodes;
 	u32 v;
 
 	if (!oh->class->sysc)
@@ -682,16 +737,33 @@ static void _sysc_enable(struct omap_hwmod *oh)
 
 	v = oh->_sysc_cache;
 	sf = oh->class->sysc->sysc_flags;
+	idlemodes = oh->class->sysc->idlemodes;
 
 	if (sf & SYSC_HAS_SIDLEMODE) {
-		s_idlemode = (oh->flags & HWMOD_SWSUP_SIDLE) ?
-			HWMOD_IDLEMODE_NO : HWMOD_IDLEMODE_SMART;
+		if (oh->flags & HWMOD_SWSUP_SIDLE) {
+			s_idlemode = HWMOD_IDLEMODE_NO;
+		} else {
+			if (sf & SYSC_HAS_ENAWAKEUP)
+				_set_enawakeup(oh, 1, &v);
+			if (idlemodes & SIDLE_SMART_WKUP)
+				s_idlemode = HWMOD_IDLEMODE_SMART_WKUP;
+			else
+				s_idlemode = HWMOD_IDLEMODE_SMART;
+		}
 		_set_slave_idlemode(oh, s_idlemode, &v);
 	}
 
 	if (sf & SYSC_HAS_MIDLEMODE) {
-		m_idlemode = (oh->flags & HWMOD_SWSUP_MSTANDBY) ?
-			HWMOD_IDLEMODE_NO : HWMOD_IDLEMODE_SMART;
+		if (oh->flags & HWMOD_SWSUP_MSTANDBY) {
+			m_idlemode = HWMOD_IDLEMODE_NO;
+		} else {
+			if (sf & SYSC_HAS_ENAWAKEUP)
+				_set_enawakeup(oh, 1, &v);
+			if (idlemodes & MSTANDBY_SMART_WKUP)
+				m_idlemode = HWMOD_IDLEMODE_SMART_WKUP;
+			else
+				m_idlemode = HWMOD_IDLEMODE_SMART;
+		}
 		_set_master_standbymode(oh, m_idlemode, &v);
 	}
 
@@ -704,6 +776,8 @@ static void _sysc_enable(struct omap_hwmod *oh)
 	    (sf & SYSC_HAS_CLOCKACTIVITY))
 		_set_clockactivity(oh, oh->class->sysc->clockact, &v);
 
+	_write_sysconfig(v, oh);
+
 	/* Set the auto idle bit only after setting the smartidle bit
 	 * as this is requirement for some modules like USBOTG
 	 * setting this will not have any impact on the other modues.
@@ -713,13 +787,8 @@ static void _sysc_enable(struct omap_hwmod *oh)
 		a_idlemode = (oh->flags & HWMOD_NO_OCP_AUTOIDLE) ?
 			0 : 1;
 		_set_module_autoidle(oh, a_idlemode, &v);
+		_write_sysconfig(v, oh);
 	}
-
-	_write_sysconfig(v, oh);
-
-	/* If slave port is in SMARTIDLE, also enable wakeup */
-	if ((sf & SYSC_HAS_SIDLEMODE) && (s_idlemode == HWMOD_IDLEMODE_SMART))
-		_enable_wakeup(oh);
 }
 
 /**
@@ -734,6 +803,7 @@ static void _sysc_enable(struct omap_hwmod *oh)
 static void _sysc_idle(struct omap_hwmod *oh)
 {
 	u8 idlemode, sf;
+	u8 idlemodes;
 	u32 v;
 
 	if (!oh->class->sysc)
@@ -741,16 +811,33 @@ static void _sysc_idle(struct omap_hwmod *oh)
 
 	v = oh->_sysc_cache;
 	sf = oh->class->sysc->sysc_flags;
+	idlemodes = oh->class->sysc->idlemodes;
 
 	if (sf & SYSC_HAS_SIDLEMODE) {
-		idlemode = (oh->flags & HWMOD_SWSUP_SIDLE) ?
-			HWMOD_IDLEMODE_FORCE : HWMOD_IDLEMODE_SMART;
+		if (oh->flags & HWMOD_SWSUP_SIDLE) {
+			idlemode = HWMOD_IDLEMODE_FORCE;
+		} else {
+			if (sf & SYSC_HAS_ENAWAKEUP)
+				_set_enawakeup(oh, 1, &v);
+			if (idlemodes & SIDLE_SMART_WKUP)
+				idlemode = HWMOD_IDLEMODE_SMART_WKUP;
+			else
+				idlemode = HWMOD_IDLEMODE_SMART;
+		}
 		_set_slave_idlemode(oh, idlemode, &v);
 	}
 
 	if (sf & SYSC_HAS_MIDLEMODE) {
-		idlemode = (oh->flags & HWMOD_SWSUP_MSTANDBY) ?
-			HWMOD_IDLEMODE_FORCE : HWMOD_IDLEMODE_SMART;
+		if (oh->flags & HWMOD_SWSUP_MSTANDBY) {
+			idlemode = HWMOD_IDLEMODE_FORCE;
+		} else {
+			if (sf & SYSC_HAS_ENAWAKEUP)
+				_set_enawakeup(oh, 1, &v);
+			if (idlemodes & MSTANDBY_SMART_WKUP)
+				idlemode = HWMOD_IDLEMODE_SMART_WKUP;
+			else
+				idlemode = HWMOD_IDLEMODE_SMART;
+		}
 		_set_master_standbymode(oh, idlemode, &v);
 	}
 
@@ -1274,7 +1361,11 @@ int omap_hwmod_register(struct omap_hwmod *oh)
 	    (oh->_state != _HWMOD_STATE_UNKNOWN))
 		return -EINVAL;
 
+#if 1//TI hsyoon 20110920
+  spin_lock_irqsave(&omap_hwmod_spinlock, flags);
+#else
 	mutex_lock(&omap_hwmod_mutex);
+#endif
 
 	pr_debug("omap_hwmod: %s: registering\n", oh->name);
 
@@ -1298,7 +1389,11 @@ int omap_hwmod_register(struct omap_hwmod *oh)
 	ret = 0;
 
 ohr_unlock:
+#if 1//TI hsyoon 20110920
+  spin_unlock_irqrestore(&omap_hwmod_spinlock, flags);
+#else
 	mutex_unlock(&omap_hwmod_mutex);
+#endif
 	return ret;
 }
 
@@ -1316,9 +1411,17 @@ struct omap_hwmod *omap_hwmod_lookup(const char *name)
 	if (!name)
 		return NULL;
 
+#if 1//TI hsyoon 20110920
+  spin_lock_irqsave(&omap_hwmod_spinlock, flags);
+#else
 	mutex_lock(&omap_hwmod_mutex);
+#endif
 	oh = _lookup(name);
+#if 1//TI hsyoon 20110920
+  spin_unlock_irqrestore(&omap_hwmod_spinlock, flags);
+#else
 	mutex_unlock(&omap_hwmod_mutex);
+#endif
 
 	return oh;
 }
@@ -1344,13 +1447,21 @@ int omap_hwmod_for_each(int (*fn)(struct omap_hwmod *oh, void *data),
 	if (!fn)
 		return -EINVAL;
 
+#if 1//TI hsyoon 20110920
+  spin_lock_irqsave(&omap_hwmod_spinlock, flags);
+#else
 	mutex_lock(&omap_hwmod_mutex);
+#endif
 	list_for_each_entry(temp_oh, &omap_hwmod_list, node) {
 		ret = (*fn)(temp_oh, data);
 		if (ret)
 			break;
 	}
+#if 1//TI hsyoon 20110920
+  spin_unlock_irqrestore(&omap_hwmod_spinlock, flags);
+#else
 	mutex_unlock(&omap_hwmod_mutex);
+#endif
 
 	return ret;
 }
@@ -1387,6 +1498,10 @@ int omap_hwmod_init(struct omap_hwmod **ohs)
 		oh = *++ohs;
 	}
 
+#if 0//TI hsyoon 20110920
+  spin_lock_init(&omap_hwmod_spinlock);
+#endif
+
 	return 0;
 }
 
@@ -1413,7 +1528,9 @@ int omap_hwmod_late_init(u8 skip_setup_idle)
 		pr_debug("omap_hwmod: will leave hwmods enabled during setup\n");
 
 	omap_hwmod_for_each(_setup, &skip_setup_idle);
-
+#if 1//TI hsyoon 20110920
+  spin_lock_init(&omap_hwmod_spinlock);
+#endif
 
 	return 0;
 }
@@ -1436,10 +1553,18 @@ int omap_hwmod_unregister(struct omap_hwmod *oh)
 
 	pr_debug("omap_hwmod: %s: unregistering\n", oh->name);
 
+#if 1//TI hsyoon 20110920
+  spin_lock_irqsave(&omap_hwmod_spinlock, flags);
+#else
 	mutex_lock(&omap_hwmod_mutex);
+#endif
 	iounmap(oh->_mpu_rt_va);
 	list_del(&oh->node);
+#if 1//TI hsyoon 20110920
+  spin_unlock_irqrestore(&omap_hwmod_spinlock, flags);
+#else
 	mutex_unlock(&omap_hwmod_mutex);
+#endif
 
 	return 0;
 }
@@ -1458,10 +1583,17 @@ int omap_hwmod_enable(struct omap_hwmod *oh)
 	if (!oh)
 		return -EINVAL;
 
+#if 1//TI hsyoon 20110920
+  spin_lock_irqsave(&omap_hwmod_spinlock, flags);
+#else
 	mutex_lock(&omap_hwmod_mutex);
+#endif
 	r = _omap_hwmod_enable(oh);
+#if 1//TI hsyoon 20110920
+  spin_unlock_irqrestore(&omap_hwmod_spinlock, flags);
+#else
 	mutex_unlock(&omap_hwmod_mutex);
-
+#endif
 	return r;
 }
 
@@ -1478,9 +1610,17 @@ int omap_hwmod_idle(struct omap_hwmod *oh)
 	if (!oh)
 		return -EINVAL;
 
+#if 1//TI hsyoon 20110920
+  spin_lock_irqsave(&omap_hwmod_spinlock, flags);
+#else
 	mutex_lock(&omap_hwmod_mutex);
+#endif
 	_omap_hwmod_idle(oh);
+#if 1//TI hsyoon 20110920
+  spin_unlock_irqrestore(&omap_hwmod_spinlock, flags);
+#else
 	mutex_unlock(&omap_hwmod_mutex);
+#endif
 
 	return 0;
 }
@@ -1498,10 +1638,17 @@ int omap_hwmod_shutdown(struct omap_hwmod *oh)
 	if (!oh)
 		return -EINVAL;
 
+#if 1//TI hsyoon 20110920
+  spin_lock_irqsave(&omap_hwmod_spinlock, flags);
+#else
 	mutex_lock(&omap_hwmod_mutex);
+#endif
 	_shutdown(oh);
+#if 1//TI hsyoon 20110920
+  spin_unlock_irqrestore(&omap_hwmod_spinlock, flags);
+#else
 	mutex_unlock(&omap_hwmod_mutex);
-
+#endif
 	return 0;
 }
 
@@ -1513,9 +1660,17 @@ int omap_hwmod_shutdown(struct omap_hwmod *oh)
  */
 int omap_hwmod_enable_clocks(struct omap_hwmod *oh)
 {
+#if 1//TI hsyoon 20110920
+  spin_lock_irqsave(&omap_hwmod_spinlock, flags);
+#else
 	mutex_lock(&omap_hwmod_mutex);
+#endif
 	_enable_clocks(oh);
+#if 1//TI hsyoon 20110920
+  spin_unlock_irqrestore(&omap_hwmod_spinlock, flags);
+#else
 	mutex_unlock(&omap_hwmod_mutex);
+#endif
 
 	return 0;
 }
@@ -1528,9 +1683,17 @@ int omap_hwmod_enable_clocks(struct omap_hwmod *oh)
  */
 int omap_hwmod_disable_clocks(struct omap_hwmod *oh)
 {
+#if 1//TI hsyoon 20110920
+  spin_lock_irqsave(&omap_hwmod_spinlock, flags);
+#else
 	mutex_lock(&omap_hwmod_mutex);
+#endif
 	_disable_clocks(oh);
+#if 1//TI hsyoon 20110920
+  spin_unlock_irqrestore(&omap_hwmod_spinlock, flags);
+#else
 	mutex_unlock(&omap_hwmod_mutex);
+#endif
 
 	return 0;
 }
@@ -1578,9 +1741,17 @@ int omap_hwmod_reset(struct omap_hwmod *oh)
 	if (!oh)
 		return -EINVAL;
 
+#if 1//TI hsyoon 20110920
+  spin_lock_irqsave(&omap_hwmod_spinlock, flags);
+#else
 	mutex_lock(&omap_hwmod_mutex);
+#endif
 	r = _reset(oh);
+#if 1//TI hsyoon 20110920
+  spin_unlock_irqrestore(&omap_hwmod_spinlock, flags);
+#else
 	mutex_unlock(&omap_hwmod_mutex);
+#endif
 
 	return r;
 }
@@ -1955,10 +2126,17 @@ int omap_hwmod_enable_wakeup(struct omap_hwmod *oh)
 	    !(oh->class->sysc->sysc_flags & SYSC_HAS_ENAWAKEUP))
 		return -EINVAL;
 
+#if 1//TI hsyoon 20110920
+  spin_lock_irqsave(&omap_hwmod_spinlock, flags);
+#else
 	mutex_lock(&omap_hwmod_mutex);
+#endif
 	_enable_wakeup(oh);
+#if 1//TI hsyoon 20110920
+  spin_unlock_irqrestore(&omap_hwmod_spinlock, flags);
+#else
 	mutex_unlock(&omap_hwmod_mutex);
-
+#endif
 	return 0;
 }
 
@@ -1980,10 +2158,18 @@ int omap_hwmod_disable_wakeup(struct omap_hwmod *oh)
 	    !(oh->class->sysc->sysc_flags & SYSC_HAS_ENAWAKEUP))
 		return -EINVAL;
 
+#if 1//TI hsyoon 20110920
+  spin_lock_irqsave(&omap_hwmod_spinlock, flags);
+#else
 	mutex_lock(&omap_hwmod_mutex);
+#endif
 	_disable_wakeup(oh);
-	mutex_unlock(&omap_hwmod_mutex);
 
+#if 1//TI hsyoon 20110920
+  spin_unlock_irqrestore(&omap_hwmod_spinlock, flags);
+#else
+	mutex_unlock(&omap_hwmod_mutex);
+#endif
 	return 0;
 }
 
@@ -2014,7 +2200,11 @@ int omap_hwmod_for_each_by_class(const char *classname,
 	pr_debug("omap_hwmod: %s: looking for modules of class %s\n",
 		 __func__, classname);
 
+#if 1//TI hsyoon 20110920
+  spin_lock_irqsave(&omap_hwmod_spinlock, flags);
+#else
 	mutex_lock(&omap_hwmod_mutex);
+#endif
 
 	list_for_each_entry(temp_oh, &omap_hwmod_list, node) {
 		if (!strcmp(temp_oh->class->name, classname)) {
@@ -2026,7 +2216,11 @@ int omap_hwmod_for_each_by_class(const char *classname,
 		}
 	}
 
+#if 1//TI hsyoon 20110920
+  spin_unlock_irqrestore(&omap_hwmod_spinlock, flags);
+#else
 	mutex_unlock(&omap_hwmod_mutex);
+#endif
 
 	if (ret)
 		pr_debug("omap_hwmod: %s: iterator terminated early: %d\n",

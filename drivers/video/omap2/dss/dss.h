@@ -204,12 +204,14 @@ struct writeback_cache_data {
 
 	enum omap_color_mode			color_mode;
 	enum omap_color_mode			input_color_mode;
-	enum omap_writeback_capturemode		capturemode;
-	enum omap_writeback_source_type		source_type;
+	enum omap_writeback_capturemode	capturemode;
+	enum omap_writeback_source_type	source_type;
 	enum omap_writeback_source		source;
-	enum omap_burst_size			burst_size;
-	u32					fifo_low;
-	u32					fifo_high;
+
+	enum omap_burst_size	burst_size;
+	u32						fifo_low;
+	u32						fifo_high;
+
 };
 
 struct seq_file;
@@ -358,8 +360,7 @@ void dsi_pll_uninit(enum omap_dsi_index ix);
 void dsi_get_overlay_fifo_thresholds(enum omap_plane plane,
 		u32 fifo_size, enum omap_burst_size *burst_size,
 		u32 *fifo_low, u32 *fifo_high);
-int dsi_calc_clock_rates(enum omap_channel channel,
-		struct dsi_clock_info *cinfo);
+int dsi_calc_clock_rates(struct dsi_clock_info *cinfo);
 void dsi_wait_pll_dispc_active(enum omap_dsi_index ix);
 void dsi_wait_pll_dsi_active(enum omap_dsi_index ix);
 #else
@@ -420,6 +421,8 @@ void dispc_lcd_enable_signal(bool enable);
 void dispc_pck_free_enable(bool enable);
 void dispc_enable_fifohandcheck(enum omap_channel channel, bool enable);
 
+int dispc_enable_gamma(enum omap_channel ch, u8 gamma);
+
 void dispc_set_lcd_size(enum omap_channel channel, u16 width, u16 height);
 #ifndef CONFIG_OMAP4_ES1
 void dispc_set_tv_divisor(void);
@@ -459,7 +462,6 @@ int dispc_setup_plane(enum omap_plane plane,
 		u16 width, u16 height,
 		u16 out_width, u16 out_height,
 		enum omap_color_mode color_mode,
-		struct omap_dss_yuv2rgb_conv *color_conv,
 		enum device_n_buffer_type ilace,
 		int x_decim, int y_decim, bool three_tap,
 		enum omap_dss_rotation_type rotation_type,
@@ -469,6 +471,7 @@ int dispc_setup_plane(enum omap_plane plane,
 
 bool dispc_go_busy(enum omap_channel channel);
 void dispc_go(enum omap_channel channel);
+void dispc_stop(enum omap_channel channel);
 void dispc_enable_digit_out(bool enable);
 void dispc_enable_channel(enum omap_channel channel, bool enable);
 bool dispc_is_channel_enabled(enum omap_channel channel);
@@ -516,6 +519,10 @@ void dispc_go_wb(void);
 void dispc_cancel_go_wb(void);
 void dispc_flush_wb(struct writeback_cache_data *wb);
 int dispc_setup_wb(struct writeback_cache_data *wb);
+
+#ifdef LGE_FW_TDMB
+void dispc_set_ccs_matrix(struct omap_ccs_matrix * ccs_info);
+#endif // LGE_FW_TDMB
 
 /* VENC */
 #ifdef CONFIG_OMAP2_DSS_VENC

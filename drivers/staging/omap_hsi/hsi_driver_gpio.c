@@ -24,8 +24,18 @@
 static void do_hsi_cawake_tasklet(unsigned long hsi_p)
 {
 	struct hsi_port *port = (struct hsi_port *)hsi_p;
+	struct hsi_dev *hsi_ctrl = port->hsi_controller;
 
+	spin_lock(&hsi_ctrl->lock);
+	hsi_clocks_enable(hsi_ctrl->dev, __func__);
+	port->in_cawake_tasklet = true;
+
+	port->cawake_status = hsi_get_cawake(port);
 	hsi_do_cawake_process(port);
+
+	port->in_cawake_tasklet = false;
+	hsi_clocks_disable(hsi_ctrl->dev, __func__);
+	spin_unlock(&hsi_ctrl->lock);
 }
 
 static irqreturn_t hsi_cawake_isr(int irq, void *hsi_p)
@@ -50,7 +60,6 @@ int __init hsi_cawake_init(struct hsi_port *port, const char *irq_name)
 			irq_name, port->cawake_gpio_irq, port->port_number);
 		return -EBUSY;
 	}
-	enable_irq_wake(port->cawake_gpio_irq);
 
 	return 0;
 }
@@ -61,7 +70,6 @@ void hsi_cawake_exit(struct hsi_port *port)
 		return;	/* Nothing to do (case SSI with GPIO or */
 			/* HSI with IO ring wakeup */
 
-	disable_irq_wake(port->cawake_gpio_irq);
 	tasklet_kill(&port->cawake_tasklet);
 	free_irq(port->cawake_gpio_irq, port);
 }

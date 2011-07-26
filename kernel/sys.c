@@ -47,6 +47,11 @@
 #include <asm/io.h>
 #include <asm/unistd.h>
 
+#if CONFIG_ARCH_OMAP4
+#include <plat/lge_err_handler.h>
+#include <linux/i2c/twl.h>
+#endif
+
 #ifndef SET_UNALIGN_CTL
 # define SET_UNALIGN_CTL(a,b)	(-EINVAL)
 #endif
@@ -307,12 +312,34 @@ void kernel_restart_prepare(char *cmd)
  */
 void kernel_restart(char *cmd)
 {
+#if CONFIG_ARCH_OMAP4
+	if(lge_is_force_ap_crash() == 1)
+	{
+		if (lge_is_mark_cp_crash() == 1)	// ifx_coredump user process marked CP crash NV item
+		{
+			// without calling BUG();
+			twl_i2c_write_u8(0x14, 0x47, 0x06); 	// PMIC reset
+			return;
+		}
+
+		BUG();
+		return;
+	}
+
+	if(cmd == NULL || cmd[0] != 'U')
+	{
+		lge_user_reset();	
+	}
+
+	twl_i2c_write_u8(0x14, 0x47, 0x06); 
+#else
 	kernel_restart_prepare(cmd);
 	if (!cmd)
 		printk(KERN_EMERG "Restarting system.\n");
 	else
 		printk(KERN_EMERG "Restarting system with command '%s'.\n", cmd);
 	machine_restart(cmd);
+#endif
 }
 EXPORT_SYMBOL_GPL(kernel_restart);
 
@@ -330,9 +357,19 @@ static void kernel_shutdown_prepare(enum system_states state)
  */
 void kernel_halt(void)
 {
+#if CONFIG_ARCH_OMAP4
+	twl_i2c_write_u8(TWL_MODULE_PM_MASTER, 0x07, 0x06);
+#endif
+
+   printk(KERN_INFO "PM: Syncing filesystems ... for kernel_halt");
+   sys_sync();
+   printk("done.\n");
+
 	kernel_shutdown_prepare(SYSTEM_HALT);
+	disable_nonboot_cpus();			
 	sysdev_shutdown();
 	printk(KERN_EMERG "System halted.\n");
+
 	machine_halt();
 }
 
@@ -345,6 +382,10 @@ EXPORT_SYMBOL_GPL(kernel_halt);
  */
 void kernel_power_off(void)
 {
+   printk(KERN_INFO "PM: Syncing filesystems ... for kernel_power_off");
+   sys_sync();
+   printk("done.\n");
+
 	kernel_shutdown_prepare(SYSTEM_POWER_OFF);
 	if (pm_power_off_prepare)
 		pm_power_off_prepare();
@@ -356,6 +397,8 @@ void kernel_power_off(void)
 EXPORT_SYMBOL_GPL(kernel_power_off);
 
 static DEFINE_MUTEX(reboot_mutex);
+
+extern void cp_power_down(void);
 
 /*
  * Reboot system call: for obvious reasons only root may call it,
@@ -372,9 +415,9 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
 	int ret = 0;
 
 	/* We only trust the superuser with rebooting the system. */
-	if (!capable(CAP_SYS_BOOT))
-		return -EPERM;
-
+	//if (!capable(CAP_SYS_BOOT))
+		//return -EPERM;
+printk("LINUX_REBOOT_CMD_RESTART");
 	/* For safety, we require "magic" arguments. */
 	if (magic1 != LINUX_REBOOT_MAGIC1 ||
 	    (magic2 != LINUX_REBOOT_MAGIC2 &&
@@ -392,51 +435,60 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
 	mutex_lock(&reboot_mutex);
 	switch (cmd) {
 	case LINUX_REBOOT_CMD_RESTART:
+	cp_power_down();
 		kernel_restart(NULL);
-		break;
+		
+				break;
 
 	case LINUX_REBOOT_CMD_CAD_ON:
 		C_A_D = 1;
+
 		break;
 
 	case LINUX_REBOOT_CMD_CAD_OFF:
-		C_A_D = 0;
-		break;
+
+	C_A_D = 0;
+
+break;
 
 	case LINUX_REBOOT_CMD_HALT:
-		kernel_halt();
+	kernel_halt();
 		do_exit(0);
 		panic("cannot halt");
 
 	case LINUX_REBOOT_CMD_POWER_OFF:
-		kernel_power_off();
+kernel_power_off();
 		do_exit(0);
 		break;
 
 	case LINUX_REBOOT_CMD_RESTART2:
-		if (strncpy_from_user(&buffer[0], arg, sizeof(buffer) - 1) < 0) {
+cp_power_down();
+
+if (strncpy_from_user(&buffer[0], arg, sizeof(buffer) - 1) < 0) {
 			ret = -EFAULT;
 			break;
 		}
 		buffer[sizeof(buffer) - 1] = '\0';
 
 		kernel_restart(buffer);
+
 		break;
 
 #ifdef CONFIG_KEXEC
 	case LINUX_REBOOT_CMD_KEXEC:
-		ret = kernel_kexec();
+ret = kernel_kexec();
 		break;
 #endif
 
 #ifdef CONFIG_HIBERNATION
 	case LINUX_REBOOT_CMD_SW_SUSPEND:
-		ret = hibernate();
+ret = hibernate();
 		break;
 #endif
 
 	default:
-		ret = -EINVAL;
+
+ret = -EINVAL;
 		break;
 	}
 	mutex_unlock(&reboot_mutex);

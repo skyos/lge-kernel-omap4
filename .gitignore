@@ -30,6 +30,7 @@ modules.builtin
 *.lzma
 *.lzo
 *.patch
+*.diff
 *.gcno
 
 #

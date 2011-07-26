@@ -51,8 +51,13 @@
 
 #include <plat/powerdomain.h>
 #include <plat/clockdomain.h>
+#include <linux/clk.h>
 #include <mach/omap4-common.h>
 #include <mach/omap4-wakeupgen.h>
+
+#include <mach/gpio.h>
+
+#include <linux/delay.h>
 
 #include "pm.h"
 #include "cm.h"
@@ -91,6 +96,7 @@ dma_addr_t omap4_secure_ram_phys;
 
 static void *secure_ram;
 static struct powerdomain *cpu0_pwrdm, *cpu1_pwrdm, *mpuss_pd;
+struct clk *l3_main_3_ick;
 
 struct tuple {
 	void __iomem *addr;
@@ -620,9 +626,14 @@ static inline void restore_l3instr_regs(void)
  *	2 - CPUx L1 and logic lost + GIC lost: MPUSS OSWR
  *	3 - CPUx L1 and logic lost + GIC + L2 lost: MPUSS OFF
  */
+
+//kibum.lee
+extern int mpu_m3_clkctrl;
+extern int mpu_m3_clkctrl_count;
+
 void omap4_enter_lowpower(unsigned int cpu, unsigned int power_state)
 {
-	unsigned int save_state, wakeup_cpu;
+	unsigned int save_state, wakeup_cpu, inst_clk_enab = 0;
 
 	if (cpu > NR_CPUS)
 		return;
@@ -635,6 +646,14 @@ void omap4_enter_lowpower(unsigned int cpu, unsigned int power_state)
 		do_wfi();
 		return;
 	}
+
+	if(power_state == PWRDM_POWER_OFF && gpio_get_value(16) == 0) 
+	{
+		printk("apds9900 low\n");
+		goto cpu_prepare;
+//		return;		
+	}
+
 
 	switch (power_state) {
 	case PWRDM_POWER_ON:
@@ -672,9 +691,26 @@ void omap4_enter_lowpower(unsigned int cpu, unsigned int power_state)
 	if (omap4_device_off_read_next_state() &&
 			 (omap_type() != OMAP2_DEVICE_TYPE_GP)) {
 		/* FIXME: Check if this can be optimised */
+
+		/* l3_main inst clock must be enabled for
+		 * a save ram operation
+		 */
+		if (!l3_main_3_ick->usecount) {
+			inst_clk_enab = 1;
+			clk_enable(l3_main_3_ick);
+		}
+
 		save_secure_all();
+
+		save_gic_wakeupgen_secure();		// ES2.2
+
+		if (inst_clk_enab == 1)
+			clk_disable(l3_main_3_ick);
+
+
 		save_ivahd_tesla_regs();
 		save_l3instr_regs();
+
 		save_state = 3;
 		goto cpu_prepare;
 	}
@@ -700,7 +736,18 @@ void omap4_enter_lowpower(unsigned int cpu, unsigned int power_state)
 	case PWRDM_POWER_OFF:
 		/* MPUSS OFF */
 		if (omap_type() != OMAP2_DEVICE_TYPE_GP) {
+			/* l3_main inst clock must be enabled for
+			 * a save ram operation
+			 */
+			if (!l3_main_3_ick->usecount) {
+	                        inst_clk_enab = 1;
+				clk_enable(l3_main_3_ick);
+			}
 			save_secure_ram();
+
+			if (inst_clk_enab == 1)
+				clk_disable(l3_main_3_ick);
+
 			save_gic_wakeupgen_secure();
 			save_ivahd_tesla_regs();
 			save_l3instr_regs();
@@ -726,6 +773,21 @@ cpu_prepare:
 		pwrdm_set_next_pwrst(cpu0_pwrdm, power_state);
 	scu_pwrst_prepare(cpu, power_state);
 
+	// kibum.lee
+	if (hard_smp_processor_id() == 0)
+	{
+		mpu_m3_clkctrl= omap_readl(0x4A008920);
+//		while(mpu_m3_clkctrl == 0x60000)
+//		{
+//			udelay(100);
+//			mpu_m3_clkctrl_count++;
+//			if(mpu_m3_clkctrl_count>=100) 
+//			{
+//				//mpu_m3_clkctrl_count = 0;
+//				break;
+//			}
+//		}
+	}
 	/*
 	 * Call low level routine to enter to
 	 * targeted power state
@@ -822,6 +884,7 @@ void __init omap4_mpuss_init(void)
 	if (!cpu0_pwrdm || !cpu1_pwrdm || !mpuss_pd)
 		pr_err("Failed to get lookup for CPUx/MPUSS pwrdm's\n");
 
+	l3_main_3_ick = clk_get(NULL, "l3_main_3_ick");
 	/*
 	 * Check the OMAP type and store it to scratchpad
 	 */

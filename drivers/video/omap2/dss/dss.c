@@ -152,15 +152,22 @@ int dss_mainclk_enable()
 		if (cpu_is_omap44xx() || cpu_is_omap34xx())
 			ret = dss_opt_clock_enable();
 
-		if (ret)
-			dss_opt_clock_disable();
-#ifdef CONFIG_PM_RUNTIME
-		else
+		printk("[JamesLee] dss_opt_clock_enable() = %d\n", ret);
+		if (!ret)
+			{
 			ret = pm_runtime_get_sync(&dss.pdev->dev);
-#endif
+			printk("[JamesLee] pm_runtime_get_sync() = %d\n", ret);
+			}
+		else
+			dss_opt_clock_disable();
 
+#if 0
 		if (!ret)
 			dss.mainclk_state = true;
+#else	/* JamesLee_OCT26 */
+		if (ret>=0)
+			dss.mainclk_state = true;
+#endif
 	} else {
 		return -EBUSY;
 	}
@@ -296,6 +303,30 @@ void dss_dump_clocks(struct seq_file *s)
 	dss_clk_disable(DSS_CLK_ICK | DSS_CLK_FCK1);
 }
 
+
+void dss_dump_regs1(void)
+{
+//#define DUMPREG(r) seq_printf(s, "%-35s %08x\n", #r, dss_read_reg(r))
+#define DUMPREG(r) printk("%-35s %08x\n", #r, dss_read_reg(r))
+
+	dss_clk_enable(DSS_CLK_ICK | DSS_CLK_FCK1);
+
+	DUMPREG(DSS_REVISION);
+	DUMPREG(DSS_SYSCONFIG);
+	DUMPREG(DSS_SYSSTATUS);
+	if (!cpu_is_omap44xx())
+		DUMPREG(DSS_IRQSTATUS);
+	DUMPREG(DSS_CONTROL);
+#ifdef CONFIG_OMAP2_DSS_SDI
+	DUMPREG(DSS_SDI_CONTROL);
+	DUMPREG(DSS_PLL_CONTROL);
+#endif
+	DUMPREG(DSS_SDI_STATUS);
+
+	dss_clk_disable(DSS_CLK_ICK | DSS_CLK_FCK1);
+#undef DUMPREG
+}
+
 void dss_dump_regs(struct seq_file *s)
 {
 #define DUMPREG(r) seq_printf(s, "%-35s %08x\n", #r, dss_read_reg(r))
@@ -342,10 +373,14 @@ void dss_select_dispc_clk_source(enum omap_dsi_index ix,
 			clk_src == DSS_SRC_PLL2_CLK1)
 		dsi_wait_pll_dispc_active(ix);
 
+#if 0
 	if (!cpu_is_omap44xx())
 		REG_FLD_MOD(DSS_CONTROL, b, 0, 0);	/* DISPC_CLK_SWITCH */
 	else
 		REG_FLD_MOD(DSS_CONTROL, b, 9, 8);	/* FCK_CLK_SWITCH */
+#else	/* JamesLee_OCT26 */
+	REG_FLD_MOD(DSS_CONTROL, b, 9, 8);	/* FCK_CLK_SWITCH */
+#endif
 
 	dss.dispc_clk_source = clk_src;
 }
@@ -619,6 +654,7 @@ static irqreturn_t dss_irq_handler_omap3(int irq, void *arg)
 {
 	u32 irqstatus;
 
+	
 	irqstatus = dss_read_reg(DSS_IRQSTATUS);
 
 	if (irqstatus & (1<<0))	/* DISPC_IRQ */
@@ -691,11 +727,13 @@ int dss_init(struct platform_device *pdev)
 
 	dss.pdata = pdev->dev.platform_data;
 	dss.pdev = pdev;
-	if (cpu_is_omap44xx())
+	if(cpu_is_omap44xx())
 		dss_mem = platform_get_resource(pdev, IORESOURCE_MEM, 1);
 	else
 		dss_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 
+	if(!dss_mem) return -ENOMEM;
+	
 	dss.base = ioremap(dss_mem->start, resource_size(dss_mem));
 	if (!dss.base) {
 		DSSERR("can't ioremap DSS\n");

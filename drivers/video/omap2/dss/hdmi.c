@@ -18,13 +18,11 @@
  * You should have received a copy of the GNU General Public License along with
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  * History:
- * Mythripk <mythripk@ti.com>	Apr 2010 Modified for EDID reading and adding
- *				OMAP related timing
+ * Mythripk <mythripk@ti.com>  Apr 2010 Modified for EDID reading and adding OMAP
+ *                                      related timing
  *				May 2010 Added support of Hot Plug Detect
- *				July 2010 Redesigned HDMI EDID for Auto-detect
- *				of timing
- *				August 2010 Char device user space control for
- *				HDMI
+ *				July 2010 Redesigned HDMI EDID for Auto-detect of timing
+ *				August 2010 Char device user space control for HDMI
  * Munish <munish@ti.com>	Sep 2010 Added support for Mandatory S3D formats
  */
 
@@ -52,6 +50,12 @@
 #include "dss.h"
 #include <plat/edid.h>
 
+#ifdef CONFIG_OMAP_PM
+#include <plat/omap-pm.h>
+#endif
+
+
+bool hdmi_suspend;
 static int hdmi_enable_video(struct omap_dss_device *dssdev);
 static void hdmi_disable_video(struct omap_dss_device *dssdev);
 static int hdmi_suspend_video(struct omap_dss_device *dssdev);
@@ -85,6 +89,7 @@ static int hdmi_set_s3d_disp_type(struct omap_dss_device *dssdev,
 static void hdmi_notify_queue(struct work_struct *work);
 static int hdmi_reset(struct omap_dss_device *dssdev,
 					enum omap_dss_reset_phase phase);
+static struct hdmi_cm hdmi_get_code(struct omap_video_timings *timing);
 
 /* Structures for chardevice move this to panel */
 static int hdmi_major;
@@ -115,7 +120,7 @@ struct hdmi_work_struct {
 	struct work_struct work;
 	int r;
 };
-
+static bool hdmi_opt_clk_state;
 static int in_reset;
 #define HDMI_IN_RESET		0x1000
 static bool hdmi_connected;
@@ -142,6 +147,12 @@ enum hdmi_s3d_frame_structure {
 	HDMI_S3D_L_DEPTH                = 4,
 	HDMI_S3D_L_DEPTH_GP_GP_DEPTH    = 5,
 	HDMI_S3D_SIDE_BY_SIDE_HALF      = 8
+	,
+	HDMI_S3D_TOP_AND_BOTTOM			= 6,
+		//HDMI 1.4a 3D video format extension.
+		//Vendor Specific InfoFrame packet PB5 Significant Nibble 3D_Structure
+		//		0110 : Top and Bottom
+		//		1000 : Side-by-Side (Half)
 };
 
 /* Subsampling types used for Sterioscopic 3D over HDMI. Below HOR
@@ -158,6 +169,7 @@ enum hdmi_s3d_subsampling_type {
 	HDMI_S3D_QUI_EL_OR = 6,
 	HDMI_S3D_QUI_EL_ER = 7
 };
+
 
 /* PLL */
 #define PLLCTRL_PLL_CONTROL				0x0ul
@@ -196,8 +208,9 @@ static const struct omap_video_timings all_timings_direct[] = {
 	{1920, 1080, 148500, 44, 528, 148, 5, 4, 36},
 	{2880, 480, 108108, 248, 64, 240, 6, 9, 30},
 	{1920, 1080, 74250, 44, 638, 148, 5, 4, 36},
+	{1920, 1080, 138500, 48, 32, 80, 3, 5, 23},
 	/* Vesa frome here */
-	{640, 480, 25175, 96, 16, 48, 2 , 11, 31},
+ 	{640, 480, 25175, 96, 16, 48, 2, 10, 33},
 	{800, 600, 40000, 128, 40, 88, 4 , 1, 23},
 	{848, 480, 33750, 112, 16, 112, 8 , 6, 23},
 	{1280, 768, 79500, 128, 64, 192, 7 , 3, 20},
@@ -210,7 +223,7 @@ static const struct omap_video_timings all_timings_direct[] = {
 	{1440, 900, 106500, 152, 80, 232, 6, 3, 25},
 	{1680, 1050, 146250, 176 , 104, 280, 6, 3, 30},
 	{1366, 768, 85500, 143, 70, 213, 3, 3, 24},
-	{1920, 1080, 148500, 44, 88, 80, 5, 4, 36},
+	{1920, 1080, 148500, 44, 88, 148, 5, 4, 36},
 	{1280, 768, 68250, 32, 48, 80, 7, 3, 12},
 	{1400, 1050, 101000, 32, 48, 80, 4, 3, 23},
 	{1680, 1050, 119000, 32, 48, 80, 6, 3, 21},
@@ -224,11 +237,12 @@ static const struct omap_video_timings all_timings_direct[] = {
 
 /* Array which maps the timing values with corresponding CEA / VESA code */
 static int code_index[ARRAY_SIZE(all_timings_direct)] = {
-	1,  19,  4,  2, 37,  6, 21, 20,  5, 16, 17,
-	29, 31, 35, 32,
+	1,  19,  4,  2, 37,  6, 21, 20,  5, 16, 
+	17,
+	29, 31, 35, 32, 39,
 	/* <--15 CEA 22--> vesa*/
 	4, 9, 0xE, 0x17, 0x1C, 0x27, 0x20, 0x23, 0x10, 0x2A,
-	0X2F, 0x3A, 0X51, 0X52, 0x16, 0x29, 0x39, 0x1B, 0x54, 4,
+	0X2F, 0x3A, 0X51, 0X52, 0x16, 0x29, 0x39, 0x1B, 0x55, 4,
 	4, 19
 };
 
@@ -237,8 +251,9 @@ static const
 struct hdmi_hvsync_pol hvpol_mapping[ARRAY_SIZE(all_timings_direct)] = {
 	{0, 0}, {1, 1}, {1, 1}, {0, 0},
 	{0, 0}, {0, 0}, {0, 0}, {1, 1},
-	{1, 1}, {1, 1}, {0, 0}, {0, 0},
-	{1, 1}, {0, 0}, {1, 1}, /* VESA */
+ 	{1, 1}, {1, 1}, {0, 0}, {0, 0},
+	{1, 1}, {0, 0}, {1, 1}, {0, 1},
+	/* VESA */
 	{0, 0}, {1, 1}, {1, 1}, {1, 0},
 	{1, 0}, {1, 1}, {1, 1}, {1, 1},
 	{0, 0}, {1, 0}, {1, 0}, {1, 0},
@@ -248,32 +263,32 @@ struct hdmi_hvsync_pol hvpol_mapping[ARRAY_SIZE(all_timings_direct)] = {
 };
 
 /* Map CEA code to the corresponding timing values (10 entries/line) */
-static int code_cea[39] = {
+static int code_cea[40] = {
 	-1,  0,  3,  3,  2,  8,  5,  5, -1, -1,
 	-1, -1, -1, -1, -1, -1,  9, 10, 10,  1,
 	7,   6,  6, -1, -1, -1, -1, -1, -1, 11,
-	11, 12, 14, -1, -1, 13, 13,  4,  4
+	11, 12, 14, -1, -1, 13, 13,  4,  4, 15
 };
 
 /* Map CEA code to the corresponding 3D timing values */
-static int s3d_code_cea[39] = {
+static int s3d_code_cea[40] = {
 	-1, -1, -1, -1, 35, -1, -1, -1, -1, -1,
 	-1, -1, -1, -1, -1, -1, -1, -1, -1, 36,
 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-	-1, -1, -1, -1, -1, -1, -1, -1, -1
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1
 };
 
 /* Map VESA code to the corresponding timing values */
-static int code_vesa[85] = {
-	-1, -1, -1, -1, 15, -1, -1, -1, -1, 16,
-	-1, -1, -1, -1, 17, -1, 23, -1, -1, -1,
-	-1, -1, 29, 18, -1, -1, -1, 32, 19, -1,
-	-1, -1, 21, -1, -1, 22, -1, -1, -1, 20,
-	-1, 30, 24, -1, -1, -1, -1, 25, -1, -1,
-	-1, -1, -1, -1, -1, -1, -1, 31, 26, -1,
-	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-	-1, 27, 28, -1, 33
+static int code_vesa[86] = {
+	-1, -1, -1, -1, 16, -1, -1, -1, -1, 17,
+	-1, -1, -1, -1, 18, -1, 24, -1, -1, -1,
+	-1, -1, 30, 19, -1, -1, -1, 33, 20, -1,
+	-1, -1, 22, -1, -1, 23, -1, -1, -1, 21,
+	-1, 31, 25, -1, -1, -1, -1, 26, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, 32, 27, -1,
+ 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+ 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, 28, 29, -1, -1, 34
 };
 
 static struct hdmi_s3d_info {
@@ -297,6 +312,7 @@ struct hdmi {
 	struct hdmi_config cfg;
 	struct omap_display_platform_data *pdata;
 	struct platform_device *pdev;
+	bool s3d_switch_support;
 } hdmi;
 
 struct hdmi_cm {
@@ -331,13 +347,13 @@ static inline void hdmi_write_reg(u32 base, u16 idx, u32 val)
 
 	switch (base) {
 	case HDMI_PHY:
-		b = hdmi.base_phy;
-		break;
+	  b = hdmi.base_phy;
+	  break;
 	case HDMI_PLLCTRL:
-		b = hdmi.base_pll;
-		break;
+	  b = hdmi.base_pll;
+	  break;
 	default:
-		BUG();
+	  BUG();
 	}
 	__raw_writel(val, b + idx);
 	/* DBG("write = 0x%x idx =0x%x\r\n", val, idx); */
@@ -350,13 +366,13 @@ static inline u32 hdmi_read_reg(u32 base, u16 idx)
 
 	switch (base) {
 	case HDMI_PHY:
-		b = hdmi.base_phy;
-		break;
+	 b = hdmi.base_phy;
+	 break;
 	case HDMI_PLLCTRL:
-		b = hdmi.base_pll;
-		break;
+	 b = hdmi.base_pll;
+	 break;
 	default:
-		BUG();
+	 BUG();
 	}
 	l = __raw_readl(b + idx);
 
@@ -370,6 +386,8 @@ static inline u32 hdmi_read_reg(u32 base, u16 idx)
 
 #define REG_FLD_MOD(b, i, v, s, e) \
 	hdmi_write_reg(b, i, FLD_MOD(hdmi_read_reg(b, i), v, s, e))
+
+
 
 static ssize_t hdmi_edid_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -401,6 +419,133 @@ static ssize_t hdmi_yuv_set(struct device *dev,
 	if (r == 0)
 		hdmi_configure_csc(yuv ? RGB_TO_YUV : RGB);
 	return r ? : size;
+}
+
+/* hdmi out sys interface */
+static ssize_t hdmi_state_show(struct device *dev,
+                struct device_attribute *attr, char *buf)
+{
+        struct omap_dss_device *dssdev = to_dss_device(dev);
+
+        return snprintf(buf, PAGE_SIZE, "%d\n", is_hdmi_on);
+}
+
+static bool hdmi_out_enabled = 0;
+static ssize_t hdmi_out_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct omap_dss_device *dssdev = to_dss_device(dev);
+	
+	return snprintf(buf, PAGE_SIZE, "%d\n", hdmi_out_enabled);
+}
+
+static ssize_t hdmi_out_set(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf, size_t size)
+{
+	struct omap_dss_device *dssdev = to_dss_device(dev);
+	
+	hdmi_out_enabled = simple_strtoul(buf, NULL, 10);
+	
+	return size;
+}
+/* hdmi source sys interface */
+static char hdmi_source[10] = "<none>";
+static ssize_t hdmi_source_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%s\n",hdmi_source);
+}
+
+static ssize_t hdmi_source_set(struct device *dev,
+                struct device_attribute *attr,
+                const char *buf, size_t size)
+{
+	
+	int len = size;
+	
+	if (buf[size-1] == '\n')
+		--len;
+
+	if(len >= 0 ){
+		if (strncpy((char*)hdmi_source, buf, len))
+				     hdmi_source[len] = '\0';
+	}
+
+	
+	return size;
+		
+}
+
+/* hdmi key sys interface */
+static char hdmi_key[256] = "<none>";
+static ssize_t hdmi_key_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%s\n",hdmi_key);
+}
+
+static ssize_t hdmi_key_set(struct device *dev,
+                struct device_attribute *attr,
+                const char *buf, size_t size)
+{
+	int len = size;
+
+	if (buf[size-1] == '\n')
+		--len;
+
+	if(len >= 0 ){
+		if (strncpy((char*)hdmi_key, buf, len))
+				hdmi_key[len] = '\0';
+	}
+	
+	return size;
+}
+/* hdmi drm lock sys interface */
+//static int drm_lock = 0;
+unsigned int drm_lock = 0; // novashock.lee patch for DRM LOCK 2011-03-15
+static ssize_t hdmi_drm_lock_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%d\n",drm_lock);
+}
+
+static ssize_t hdmi_drm_lock_set(struct device *dev,
+                struct device_attribute *attr,
+                const char *buf, size_t size)
+{
+	int drm_lock_value;
+	int ret;
+	struct omap_dss_device *dssdev = to_dss_device(dev);
+	
+	drm_lock_value = simple_strtoul(buf, NULL, 10);
+	if(drm_lock_value){
+		if((++drm_lock) == 1)
+				ret = kobject_uevent(&dssdev->dev.kobj,KOBJ_ONLINE);
+			
+//	}else{
+       }else if(drm_lock){		// novashock.lee patch for DRM LOCK 2011-03-15
+		if((--drm_lock) == 0)
+				ret = kobject_uevent(&dssdev->dev.kobj,KOBJ_OFFLINE);
+	}
+		
+	return size;		
+}
+/* hdmi drm  usr selection sys interface */
+static char drm_usr_sel = 0;
+static ssize_t hdmi_drm_usr_sel_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%d\n",drm_usr_sel);
+}
+
+static ssize_t hdmi_drm_usr_sel_set(struct device *dev,
+                struct device_attribute *attr,
+                const char *buf, size_t size)
+{
+	drm_usr_sel = simple_strtoul(buf, NULL, 10);
+
+	return size;		
 }
 
 static ssize_t hdmi_deepcolor_show(struct device *dev,
@@ -502,14 +647,32 @@ static ssize_t audio_power_store(struct device *dev,
 	return size;
 }
 
+static ssize_t hdmi_code_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct omap_dss_device *dssdev = to_dss_device(dev);
+	struct hdmi_cm cm;
+
+	cm = hdmi_get_code(&dssdev->panel.timings);
+
+	return snprintf(buf, PAGE_SIZE, "%s:%u\n",
+			cm.mode ? "CEA" : "VESA", cm.code);
+}
 
 static DEVICE_ATTR(edid, S_IRUGO, hdmi_edid_show, hdmi_edid_store);
 static DEVICE_ATTR(yuv, S_IRUGO | S_IWUSR, hdmi_yuv_supported, hdmi_yuv_set);
+static DEVICE_ATTR(hdmi_state, S_IRUGO | S_IWUSR, hdmi_state_show, NULL);
+static DEVICE_ATTR(hdmi_out, S_IRUGO | S_IWUSR, hdmi_out_show, hdmi_out_set);
+static DEVICE_ATTR(hdmi_source, S_IRUGO | S_IWUSR, hdmi_source_show, hdmi_source_set);
+static DEVICE_ATTR(hdmi_key, S_IRUGO | S_IWUSR, hdmi_key_show, hdmi_key_set);
+static DEVICE_ATTR(hdmi_drm_lock, S_IRUGO | S_IWUSR, hdmi_drm_lock_show, hdmi_drm_lock_set);
+static DEVICE_ATTR(hdmi_drm_usr_sel, S_IRUGO | S_IWUSR, hdmi_drm_usr_sel_show, hdmi_drm_usr_sel_set);
 static DEVICE_ATTR(deepcolor, S_IRUGO | S_IWUSR, hdmi_deepcolor_show,
 							hdmi_deepcolor_store);
 static DEVICE_ATTR(lr_fr, S_IRUGO | S_IWUSR, hdmi_lr_fr_show, hdmi_lr_fr_store);
 static DEVICE_ATTR(audio_power, S_IRUGO | S_IWUSR, audio_power_show,
 							audio_power_store);
+static DEVICE_ATTR(code, S_IRUGO, hdmi_code_show, NULL);
 
 static int set_hdmi_hot_plug_status(struct omap_dss_device *dssdev, bool onoff)
 {
@@ -552,7 +715,6 @@ static struct omap_dss_device *get_hdmi_device(void)
 
 	return omap_dss_find_device(NULL, match);
 }
-
 static int hdmi_ioctl(struct inode *inode, struct file *file,
 					  unsigned int cmd, unsigned long arg)
 {
@@ -565,6 +727,7 @@ static int hdmi_ioctl(struct inode *inode, struct file *file,
 	switch (cmd) {
 	case HDMI_ENABLE:
 		hdmi_enable_video(dssdev);
+		is_hdmi_on = true;
 		break;
 	case HDMI_DISABLE:
 		hdmi_disable_video(dssdev);
@@ -794,6 +957,8 @@ static int hdmi_phy_init(u32 w1,
 	/* write to phy address 1 to start HDMI line (TXVALID and TMDSCLKEN) */
 	hdmi_write_reg(phy, HDMI_TXPHY_DIGITAL_CTRL, 0xF0000000);
 
+	/* setup max LDO voltage */
+	REG_FLD_MOD(phy, HDMI_TXPHY_POWER_CTRL, 0xB, 3, 0);
 	/*  write to phy address 3 to change the polarity control  */
 	REG_FLD_MOD(phy, HDMI_TXPHY_PAD_CFG_CTRL, 0x1, 27, 27);
 
@@ -871,7 +1036,7 @@ static void hdmi_panel_remove(struct omap_dss_device *dssdev)
 
 static bool hdmi_panel_is_enabled(struct omap_dss_device *dssdev)
 {
-	return video_power == HDMI_POWER_FULL;
+	return (video_power == HDMI_POWER_FULL) && (hdmi_plug_stat);
 }
 
 static int hdmi_panel_enable(struct omap_dss_device *dssdev)
@@ -887,12 +1052,14 @@ static void hdmi_panel_disable(struct omap_dss_device *dssdev)
 
 static int hdmi_panel_suspend(struct omap_dss_device *dssdev)
 {
+	hdmi_suspend = true;
 	hdmi_suspend_video(dssdev);
 	return 0;
 }
 
 static int hdmi_panel_resume(struct omap_dss_device *dssdev)
 {
+	hdmi_suspend = false;
 	hdmi_resume_video(dssdev);
 	return 0;
 }
@@ -906,7 +1073,10 @@ static void hdmi_enable_clocks(int enable)
 		dss_clk_disable(DSS_CLK_ICK | DSS_CLK_FCK1 | DSS_CLK_54M |
 				DSS_CLK_96M);
 }
-
+bool hdmi_state(void)
+{
+	return (video_power == HDMI_POWER_FULL)&&hdmi_plug_stat;
+}
 static struct omap_dss_driver hdmi_driver = {
 	.probe		= hdmi_panel_probe,
 	.remove		= hdmi_panel_remove,
@@ -945,15 +1115,22 @@ int hdmi_init(struct platform_device *pdev)
 	hdmi_s3d.subsamp = false;
 	hdmi_s3d.subsamp_pos = 0;
 	hdmi.s3d_enabled = false;
+	hdmi.s3d_switch_support = false;
 
 	hdmi.pdata = pdev->dev.platform_data;
 	hdmi.pdev = pdev;
+
+
 	mutex_init(&hdmi.lock);
 	mutex_init(&hdmi.lock_aux);
 
 	hdmi_mem = platform_get_resource(pdev, IORESOURCE_MEM, 1);
-	hdmi.base_pll = ioremap(hdmi_mem->start + 0x200,
-						resource_size(hdmi_mem));
+	if(!hdmi_mem) {
+                ERR("can't alloc hdmi_mem\n");
+                return -ENOMEM;
+	}
+
+	hdmi.base_pll = ioremap((hdmi_mem->start + 0x200), resource_size(hdmi_mem));
 	if (!hdmi.base_pll) {
 		ERR("can't ioremap pll\n");
 		return -ENOMEM;
@@ -968,6 +1145,9 @@ int hdmi_init(struct platform_device *pdev)
 	hdmi_enable_clocks(1);
 
 	hdmi_lib_init();
+
+	hdmi.hdmi_start_frame_cb = 0;
+	hdmi.hdmi_stop_frame_cb = 0;
 
 	hdmi_enable_clocks(0);
 	/* Get the major number for this module */
@@ -1031,6 +1211,7 @@ static int hdmi_power_on(struct omap_dss_device *dssdev)
 	if (!custom_set) {
 		code = get_timings_index();
 
+  		HDMI_W1_SetWaitSoftReset(); // 2011-03-19 novashock.lee READ EDID Fail patch. //
 		DSSDBG("No edid set thus will be calling hdmi_read_edid");
 		r = hdmi_read_edid(p);
 		if (r) {
@@ -1149,8 +1330,13 @@ static int hdmi_power_on(struct omap_dss_device *dssdev)
 		hdmi.cfg.vsi_enabled = false;
 	}
 
-	hdmi.cfg.hdmi_dvi = hdmi.mode;
+	hdmi.cfg.hdmi_dvi = hdmi_has_ieee_id((u8 *)edid) && hdmi.mode;
 	hdmi.cfg.video_format = hdmi.code;
+	hdmi.cfg.supports_ai = hdmi_ai_supported(edid);
+
+	DSSINFO("%s:%d res=%dx%d ", hdmi.cfg.hdmi_dvi ? "CEA" : "VESA",
+		hdmi.code, dssdev->panel.timings.x_res,
+		dssdev->panel.timings.y_res);
 
 	if ((hdmi.mode)) {
 		switch (hdmi.code) {
@@ -1166,6 +1352,8 @@ static int hdmi_power_on(struct omap_dss_device *dssdev)
 		}
 	}
 
+	hdmi_configure_lr_fr();
+
 	hdmi_lib_enable(&hdmi.cfg);
 
 	hdmi_configure_lr_fr();
@@ -1173,7 +1361,7 @@ static int hdmi_power_on(struct omap_dss_device *dssdev)
 	/* these settings are independent of overlays */
 	dss_switch_tv_hdmi(1);
 
-	/* bypass TV gamma table */
+	/* bypass TV gamma table*/
 	dispc_enable_gamma_table(0);
 
 	/* allow idle mode */
@@ -1193,6 +1381,10 @@ static int hdmi_power_on(struct omap_dss_device *dssdev)
 	HDMI_W1_StartVideoFrame(HDMI_WP);
 
 	dispc_enable_digit_out(1);
+	hdmi_set_irqs(0);
+
+	if (hdmi.hdmi_start_frame_cb)
+		(*hdmi.hdmi_start_frame_cb)();
 
 	kfree(vsdb_format);
 
@@ -1207,6 +1399,7 @@ static int hdmi_min_enable(void)
 	int r;
 	DSSDBG("hdmi_min_enable");
 
+	hdmi_set_irqs(1);
 	hdmi_enable_clocks(0);
 	hdmi_power = HDMI_POWER_MIN;
 	r = hdmi_phy_init(HDMI_WP, HDMI_PHY, 0);
@@ -1221,7 +1414,7 @@ static int hdmi_min_enable(void)
 		hdmi.cfg.vsi_enabled = false;
 	}
 
-	hdmi.cfg.hdmi_dvi = hdmi.mode;
+	hdmi.cfg.hdmi_dvi = hdmi_has_ieee_id((u8 *)edid) && hdmi.mode;
 	hdmi.cfg.video_format = hdmi.code;
 	hdmi_lib_enable(&hdmi.cfg);
 	return 0;
@@ -1233,7 +1426,8 @@ static int hdmi_audio_power_off(void)
 retry:
 	/* wait for audio to suspend */
 	if (audio_on) {
-		mutex_unlock(&hdmi.lock_aux);
+//		mutex_unlock(&hdmi.lock_aux);
+
 
 		/* signal suspend request to audio */
 		hdmi_notify_pwrchange(HDMI_EVENT_POWEROFF);
@@ -1241,7 +1435,8 @@ retry:
 		/* allow audio power to go off */
 		res = wait_event_interruptible_timeout(audio_wq,
 			!audio_on, msecs_to_jiffies(1000));
-		mutex_lock(&hdmi.lock_aux);
+
+//		mutex_lock(&hdmi.lock_aux);
 		if (res <= 0) {
 			printk(KERN_ERR "HDMI audio power is not released within 1sec\n");
 			return -EBUSY;
@@ -1307,6 +1502,8 @@ static int hdmi_is_connected(void)
 	return hdmi_rxdet();
 }
 
+extern int cosmo_panel_hdmi_flag;
+static int temp_count = 0;
 static void hdmi_work_queue(struct work_struct *ws)
 {
 	struct hdmi_work_struct *work =
@@ -1317,6 +1514,7 @@ static void hdmi_work_queue(struct work_struct *ws)
 	static ktime_t last_connect, last_disconnect;
 	bool notify;
 	int action = 0;
+	printk("%s\n", __func__);
 
 	mutex_lock(&hdmi.lock);
 	mutex_lock(&hdmi.lock_aux);
@@ -1332,8 +1530,14 @@ static void hdmi_work_queue(struct work_struct *ws)
 	if (r & (HDMI_CONNECT | HDMI_DISCONNECT))
 		action = (hdmi_is_connected()) ? HDMI_CONNECT : HDMI_DISCONNECT;
 
+	DSSDBG("\n\n");
+	DSSDBG("<%s> action = %d, interrupt_q = 0x%x, hdmi_power = %d,\n"
+	       "hdmi_connected = %d",
+	       __func__, action, r, hdmi_power, hdmi_connected);
+
 	if (action & HDMI_DISCONNECT) {
 		/* cancel auto-notify */
+		DSSINFO("Disable Display - HDMI_DISCONNECT\n");
 		mutex_unlock(&hdmi.lock_aux);
 		mutex_unlock(&hdmi.lock);
 		cancel_hot_plug_notify_work();
@@ -1365,7 +1569,7 @@ static void hdmi_work_queue(struct work_struct *ws)
 		 */
 		memset(&dssdev->panel.timings, 0,
 						sizeof(dssdev->panel.timings));
-
+		hdmi_plug_stat = 0;
 		/* turn audio power off */
 		notify = !audio_on; /* notification is sent if audio is on */
 		hdmi_audio_power_off();
@@ -1377,21 +1581,52 @@ static void hdmi_work_queue(struct work_struct *ws)
 		mutex_unlock(&hdmi.lock);
 		mdelay(100);
 		mutex_lock(&hdmi.lock);
+
 		if (notify)
 			hdmi_notify_pwrchange(HDMI_EVENT_POWEROFF);
 		mutex_lock(&hdmi.lock_aux);
+
 		if (dssdev->state != OMAP_DSS_DISPLAY_ACTIVE)
 			/* HDMI is disabled, no need to process */
 			goto done;
 
 		DSSINFO("Display disabled\n");
 		HDMI_W1_StopVideoFrame(HDMI_WP);
+#if 0		
 		if (dssdev->platform_disable)
 			dssdev->platform_disable(dssdev);
+#endif		
 			dispc_enable_digit_out(0);
+
+		if (hdmi.hdmi_stop_frame_cb)
+			(*hdmi.hdmi_stop_frame_cb)();
+
 		HDMI_W1_SetWaitPllPwrState(HDMI_WP, HDMI_PLLPWRCMD_ALLOFF);
 		edid_set = custom_set = false;
 		set_video_power(dssdev, HDMI_POWER_MIN);
+
+		/* turn OFF clocks on disconnect*/
+		if (cpu_is_omap44xx()) {
+			if (hdmi_opt_clk_state) {
+#ifdef CONFIG_OMAP_PM
+				int ret = 0;
+#endif
+				DSSINFO("Disable HDMI_PHY_48MHz clock\n");
+				hdmi_opt_clock_disable();
+				hdmi_opt_clk_state = false;
+#ifdef CONFIG_OMAP_PM
+				DSSINFO("Release L3 constraint\n");
+				ret = omap_pm_set_min_bus_tput(
+					&dssdev->dev,
+					OCP_INITIATOR_AGENT,
+					-1);
+				if (ret)
+					DSSERR("Unable to release L3 "
+					       "constraint\n");
+#endif
+			}
+		}
+		DSSINFO("Disable Display Done - HDMI_DISCONNECT\n\n");
 	}
 
 	/* read connect timestamp */
@@ -1399,22 +1634,12 @@ static void hdmi_work_queue(struct work_struct *ws)
 		last_connect = ktime_get();
 
 	if (action & HDMI_CONNECT) {
-		if (!edid_set && !custom_set) {
-			/*
-			 * Schedule hot-plug-notify in 1 sec in case no HPD
-			 * event gets generated
-			 */
-			if (!delayed_work_pending(&hot_plug_notify_work))
-				queue_delayed_work(irq_wq,
-						&hot_plug_notify_work,
-						msecs_to_jiffies(1000));
-		} else {
-			if (custom_set)
-				user_hpd_state = false;
+		if (custom_set)
+			user_hpd_state = false;
 
-			if (!user_hpd_state && hdmi_power == HDMI_POWER_FULL)
-				set_hdmi_hot_plug_status(dssdev, true);
-		}
+		if (!user_hpd_state && (hdmi_power == HDMI_POWER_FULL))
+			set_hdmi_hot_plug_status(dssdev, true);
+		hdmi_plug_stat = 1;
 	}
 
 	if ((action & HDMI_CONNECT) && (video_power == HDMI_POWER_MIN) &&
@@ -1422,7 +1647,29 @@ static void hdmi_work_queue(struct work_struct *ws)
 
 		DSSINFO("Physical Connect\n");
 
-		/* turn on clocks on connect */
+		/* turn ON clocks on connect*/
+		if (cpu_is_omap44xx()) {
+			if (!hdmi_opt_clk_state) {
+				int ret = 0;
+				DSSINFO("Enable HDMI_PHY_48MHz clock\n");
+				ret = hdmi_opt_clock_enable();
+				if (!ret)
+					hdmi_opt_clk_state = true;
+				else
+					goto done2;
+#ifdef CONFIG_OMAP_PM
+				DSSINFO("Set L3 constraint to 200MHz\n");
+				ret = omap_pm_set_min_bus_tput(
+					&dssdev->dev,
+					OCP_INITIATOR_AGENT,
+					200*1000*4);
+				if (ret)
+					DSSERR("Unable to set L3 at 200MHz\n");
+#endif
+			}
+		}
+		edid_set = false;
+		custom_set = true;
 		hdmi_reconfigure(dssdev);
 		mutex_unlock(&hdmi.lock_aux);
 		hdmi_notify_pwrchange(HDMI_EVENT_POWERON);
@@ -1433,7 +1680,12 @@ static void hdmi_work_queue(struct work_struct *ws)
 		if (dssdev->state != OMAP_DSS_DISPLAY_ACTIVE)
 			/* HDMI is disabled, no need to process */
 			goto done;
+		custom_set = false;
+		DSSINFO("Physical Connect Done:\n\n");
+		is_hdmi_on = true;
 	}
+
+done:
 
 	if ((r & HDMI_FIRST_HPD) && (!edid_set) && (!custom_set)) {
 		mutex_unlock(&hdmi.lock_aux);
@@ -1449,28 +1701,69 @@ static void hdmi_work_queue(struct work_struct *ws)
 		 * HDMI should already be full on. We use this to read EDID
 		 * the first time we enable HDMI via HPD.
 		 */
-		DSSINFO("Connect 1 - Enabling display\n");
+		DSSINFO("Enabling display - HDMI_FIRST_HPD\n");
+
+		if (!hdmi_connected) {
+			DSSINFO("irqstatus=0x%08x ignoring FIRST_HPD when "
+				"hdmi_connected = %d, hdmi_power = %d\n",
+				r, hdmi_connected, hdmi_power);
+			/* If HDMI is disconnected before FIRST HPD is processed
+			 * return without reconfiguring the HDMI and do not
+			 * send any hot plug event to the userspace in this case
+			 *  and reset irq's before returning.
+			 */
+			hdmi_set_irqs(0);
+			goto hpd_modify;
+		}
+
 		hdmi_reconfigure(dssdev);
 
 		set_hdmi_hot_plug_status(dssdev, true);
 		/* ignore return value for now */
+		DSSINFO("Enabling display Done- HDMI_FIRST_HPD\n\n");
 	}
 
+hpd_modify:
 	if (r & HDMI_HPD_MODIFY) {
+		struct omap_overlay *ovl;
+		int i;
+
+		/* check if any overlays are connected to TV and
+		 * return if connected after resetting the IRQ's
+		 */
+		for (i = 0; i < dssdev->manager->num_overlays; i++) {
+			ovl = dssdev->manager->overlays[i];
+			if (!(strcmp(ovl->manager->name, "tv")))
+				if (ovl->info.enabled) {
+					DSSINFO("Overlay %d is still "
+						"attached to tv\n", ovl->id);
+					DSSINFO("Cannot Rconfigure HDMI when "
+						"overlays are still attached "
+						"to tv\n"
+						"Dettach the overlays before "
+						"reconfiguring the HDMI\n\n");
+					/* clear the IRQ's*/
+					hdmi_set_irqs(0);
+					goto done2;
+				}
+		}
+
 		/*
 		 * HDMI HPD state low followed by a HPD state high
 		 * with more than 100ms duration is recieved so EDID should
 		 * reread and HDMI reconfigued.
 		 */
-		DSSINFO("HDMI HPD  display\n");
+		DSSINFO("Reconfigure HDMI PHY - HDMI_HPD_MODIFY\n\n");
 		/* force a new power-up to read EDID */
 		edid_set = false;
+		custom_set = false;
 		hdmi_reconfigure(dssdev);
 		set_hdmi_hot_plug_status(dssdev, true);
 		/* ignore return value for now */
+		DSSINFO("Reconfigure HDMI PHY Done- HDMI_HPD_MODIFY\n\n");
 	}
 
-done:
+done2:
 	mutex_unlock(&hdmi.lock_aux);
 	mutex_unlock(&hdmi.lock);
 	kfree(work);
@@ -1508,9 +1801,15 @@ static irqreturn_t hdmi_irq_handler(int irq, void *arg)
 		hdmi_enable_clocks(1);
 	if (r & HDMI_CONNECT)
 		hdmi_connected = true;
+#if 1
 	if (r & HDMI_DISCONNECT)
 		hdmi_connected = false;
-
+#else
+	if (r & HDMI_DISCONNECT){
+		spin_unlock_irqrestore(&irqstatus_lock, flags);	
+		return IRQ_HANDLED;
+	}
+#endif
 	spin_unlock_irqrestore(&irqstatus_lock, flags);
 
 	hdmi_handle_irq_work(r | in_reset);
@@ -1526,8 +1825,12 @@ static void hdmi_power_off_phy(struct omap_dss_device *dssdev)
 	memset(&dssdev->panel.timings, 0, sizeof(dssdev->panel.timings));
 
 	HDMI_W1_StopVideoFrame(HDMI_WP);
+	hdmi_set_irqs(1);
 
 	dispc_enable_digit_out(0);
+
+	if (hdmi.hdmi_stop_frame_cb)
+		(*hdmi.hdmi_stop_frame_cb)();
 
 	hdmi_phy_off(HDMI_WP);
 
@@ -1582,7 +1885,23 @@ static int hdmi_start_display(struct omap_dss_device *dssdev)
 	/* enable clock(s) */
 	dssdev->state = OMAP_DSS_DISPLAY_ACTIVE;
 	dss_mainclk_state_enable();
-
+	if (cpu_is_omap44xx()) {
+		if (!hdmi_opt_clk_state) {
+			r = hdmi_opt_clock_enable();
+			if (!r)
+				hdmi_opt_clk_state = true;
+			else
+				goto err;
+#ifdef CONFIG_OMAP_PM
+			DSSINFO("Set L3 constraint to 200MHz\n");
+			r = omap_pm_set_min_bus_tput(&dssdev->dev,
+						       OCP_INITIATOR_AGENT,
+						       200*1000*4);
+			if (r)
+				DSSERR("Unable to set L3 at 200MHz\n");
+#endif
+		}
+	}
 err:
 	return r;
 }
@@ -1635,6 +1954,7 @@ static int hdmi_set_power(struct omap_dss_device *dssdev,
 		} else if (power_need == HDMI_POWER_MIN) {
 			r = hdmi_min_enable();
 		} else {
+                        dssdev->manager->disable(dssdev->manager);
 			omap_dss_stop_device(dssdev);
 			hdmi_power_off(dssdev);
 		}
@@ -1650,9 +1970,25 @@ static int hdmi_set_power(struct omap_dss_device *dssdev,
 	DSSINFO("pwrchanged => (%d,%c) = %d\n",
 		power_need, (state_need == HDMI_ACTIVE ? 'A' :
 			     state_need == HDMI_SUSPENDED ? 'S' : 'D'), r);
+
+	if (cpu_is_omap44xx())
+		if ((power_need < HDMI_POWER_FULL) && hdmi_opt_clk_state) {
+			DSSINFO("Disable HDMI_PHY_48MHz clock, "
+				"hdmi_power = %d\n\n", power_need);
+			hdmi_opt_clock_disable();
+			hdmi_opt_clk_state = false;
+#ifdef CONFIG_OMAP_PM
+			DSSINFO("Release L3 constraint\n");
+			r = omap_pm_set_min_bus_tput(&dssdev->dev,
+						     OCP_INITIATOR_AGENT,
+						     -1);
+			if (r)
+				DSSERR("Unable to release L3 constraint\n");
+#endif
+		}
+
 	return r;
 }
-
 static int set_video_power(struct omap_dss_device *dssdev,
 						enum hdmi_power_state v_power)
 {
@@ -1683,6 +2019,22 @@ int hdmi_set_audio_power(bool _audio_on)
 	return r;
 }
 
+int hdmi_set_audio_power_off(void)
+{
+	struct omap_dss_device *dssdev = get_hdmi_device();
+	bool notify;
+	int r;
+
+	if (!dssdev)
+		return -EPERM;
+
+	r = hdmi_set_power(dssdev, video_power, v_suspended, 0);
+
+	wake_up_interruptible(&audio_wq);
+
+	return r;
+}
+
 static int hdmi_enable_hpd(struct omap_dss_device *dssdev)
 {
 	int r;
@@ -1696,7 +2048,6 @@ static int hdmi_enable_hpd(struct omap_dss_device *dssdev)
 	mutex_unlock(&hdmi.lock);
 	return r;
 }
-
 
 static int hdmi_enable_video(struct omap_dss_device *dssdev)
 {
@@ -1763,6 +2114,7 @@ static int hdmi_reset(struct omap_dss_device *dssdev,
 	}
 	if (phase & OMAP_DSS_RESET_ON) {
 		if (hdmi_power == HDMI_POWER_FULL) {
+		//if (in_reset == HDMI_POWER_FULL) {
 			r = hdmi_reconfigure(dssdev);
 			hdmi_notify_pwrchange(HDMI_EVENT_POWERPHYON);
 			in_reset = 0;
@@ -1829,6 +2181,7 @@ static int hdmi_resume_video(struct omap_dss_device *dssdev)
 	return ret;
 }
 
+
 static void hdmi_get_timings(struct omap_dss_device *dssdev,
 			struct omap_video_timings *timings)
 {
@@ -1850,9 +2203,26 @@ static void hdmi_set_timings(struct omap_dss_device *dssdev,
 static void hdmi_set_custom_edid_timing_code(struct omap_dss_device *dssdev,
 							int code, int mode)
 {
+	struct omap_overlay *ovl;
+	int i;
 	/* for now only set this while on or on HPD */
 	if (dssdev->state != OMAP_DSS_DISPLAY_ACTIVE)
 		return;
+
+	/* check if any overlays are connected to TV and return if connected*/
+	for (i = 0; i < dssdev->manager->num_overlays; i++) {
+		ovl = dssdev->manager->overlays[i];
+		if (!(strcmp(ovl->manager->name, "tv")))
+			if (ovl->info.enabled) {
+				DSSINFO("Overlay[%d] is still "
+					"attached to tv\n", ovl->id);
+				DSSINFO("Cannot change HDMI timing when "
+					"overlays are still attached to tv\n"
+					"Dettach the overlays before "
+					"timing change\n\n");
+				return;
+			}
+	}
 
 	/* ignore invalid codes */
 	if ((!mode && code < ARRAY_SIZE(code_vesa) && code_vesa[code] >= 0) ||
@@ -1861,7 +2231,8 @@ static void hdmi_set_custom_edid_timing_code(struct omap_dss_device *dssdev,
 		hdmi.code = code;
 		hdmi.mode = mode;
 		custom_set = 1;
-		hdmi_reset(dssdev, OMAP_DSS_RESET_BOTH);
+		//hdmi_reset(dssdev, OMAP_DSS_RESET_BOTH);
+		hdmi_reset(dssdev, OMAP_DSS_RESET_ON);
 	}
 }
 
@@ -1885,16 +2256,16 @@ static struct hdmi_cm hdmi_get_code(struct omap_video_timings *timing)
 		temp_vsync = temp.vfp + temp.vsw + temp.vbp;
 		timing_vsync = timing->vfp + timing->vsw + timing->vbp;
 
-		printk(KERN_INFO "Temp_hsync = %d, temp_vsync = %d, "
+		DSSDBG("Temp_hsync = %d, temp_vsync = %d, "
 			"timing_hsync = %d, timing_vsync = %d",
-			temp_hsync, temp_hsync, timing_hsync, timing_vsync);
+			temp_hsync, temp_vsync, timing_hsync, timing_vsync);
 
 		if (temp_hsync == timing_hsync && temp_vsync == timing_vsync) {
 			code = i;
 			cm.code = code_index[i];
-			cm.mode = code < 14;
-			DSSDBG("Hdmi_code = %d mode = %d\n", cm.code, cm.mode);
-			print_omap_video_timings(&temp);
+			cm.mode = code < OMAP_HDMI_TIMINGS_VESA_START;
+			DSSDBG("Video code = %d mode = %s\n",
+			cm.code, cm.mode ? "CEA" : "VESA");
 			break;
 		}
 	}
@@ -1904,29 +2275,34 @@ static struct hdmi_cm hdmi_get_code(struct omap_video_timings *timing)
 static void hdmi_get_edid(struct omap_dss_device *dssdev)
 {
 	u8 i = 0, mark = 0, *e;
-	int offset, addr;
+	int offset, addr, length;
 	struct HDMI_EDID *edid_st = (struct HDMI_EDID *)edid;
 	struct image_format *img_format;
 	struct audio_format *aud_format;
 	struct deep_color *vsdb_format;
 	struct latency *lat;
 	struct omap_video_timings timings;
+	struct hdmi_cm cm;
+	int no_timing_info = 0;
 
 	img_format = kzalloc(sizeof(*img_format), GFP_KERNEL);
 	if (!img_format) {
 		WARN_ON(1);
 		return;
 	}
+	
 	aud_format = kzalloc(sizeof(*aud_format), GFP_KERNEL);
 	if (!aud_format) {
 		WARN_ON(1);
 		goto hdmi_get_err1;
 	}
+	
 	vsdb_format = kzalloc(sizeof(*vsdb_format), GFP_KERNEL);
 	if (!vsdb_format) {
 		WARN_ON(1);
 		goto hdmi_get_err2;
 	}
+	
 	lat = kzalloc(sizeof(*lat), GFP_KERNEL);
 	if (!lat) {
 		WARN_ON(1);
@@ -1974,10 +2350,16 @@ static void hdmi_get_edid(struct omap_dss_device *dssdev)
 
 	for (i = 0; i < EDID_SIZE_BLOCK0_TIMING_DESCRIPTOR; i++) {
 		printk(KERN_INFO "Extension 0 Block %d\n", i);
-		get_edid_timing_info(&edid_st->DTD[i], &timings);
+		no_timing_info = get_edid_timing_info(&edid_st->DTD[i],
+				&timings);
 		mark = dss_debug;
 		dss_debug = 1;
-		print_omap_video_timings(&timings);
+		if (!no_timing_info) {
+			cm = hdmi_get_code(&timings);
+			print_omap_video_timings(&timings);
+			printk(KERN_INFO "Video code: %d video mode %d",
+				cm.code, cm.mode);
+		}
 		dss_debug = mark;
 	}
 	if (edid[0x7e] != 0x00) {
@@ -1994,10 +2376,34 @@ static void hdmi_get_edid(struct omap_dss_device *dssdev)
 				mark = dss_debug;
 				dss_debug = 1;
 				print_omap_video_timings(&timings);
+				cm = hdmi_get_code(&timings);
+				printk(KERN_INFO "Video code: %d video mode %d",
+					cm.code, cm.mode);
 				dss_debug = mark;
 			}
 		}
+		hdmi_get_video_svds(edid, &offset, &length);
+		printk(KERN_INFO "No of SVDs: %d", length);
+		for (i = 0; i < length; i++) {
+			printk(KERN_INFO "SVD[%d]: CEA code[%d], native[%s]",
+				i, edid[offset+i] & HDMI_EDID_EX_VIDEO_MASK,
+				edid[offset+i] & HDMI_EDID_EX_VIDEO_NATIVE ?
+				"YES" : "NO");
+		}
+		printk(KERN_INFO "No. of native DTD: %d",
+				(edid[EDID_DESCRIPTOR_BLOCK1_ADDRESS + 3]
+			& HDMI_VIDEO_NATIVE_DTDS_MASK));
+
+		printk(KERN_INFO "Supports basic audio: %s",
+				(edid[EDID_DESCRIPTOR_BLOCK1_ADDRESS + 3]
+			& HDMI_AUDIO_BASIC_MASK) ? "YES" : "NO");
 	}
+
+	printk(KERN_INFO "Has IEEE HDMI ID: %s",
+		hdmi_has_ieee_id(edid) ? "YES" : "NO");
+	printk(KERN_INFO "Supports AI: %s", hdmi.cfg.supports_ai ?
+		"YES" : "NO");
+
 	hdmi_get_image_format(edid, img_format);
 	printk(KERN_INFO "%d audio length\n", img_format->length);
 	for (i = 0 ; i < img_format->length ; i++)
@@ -2023,8 +2429,8 @@ static void hdmi_get_edid(struct omap_dss_device *dssdev)
 		lat->int_vid_latency, lat->int_aud_latency);
 
 	printk(KERN_INFO "YUV supported %d", hdmi_tv_yuv_supported(edid));
-
 	kfree(lat);
+
 hdmi_get_err3:
 	kfree(vsdb_format);
 hdmi_get_err2:
@@ -2057,7 +2463,9 @@ static int hdmi_set_s3d_disp_type(struct omap_dss_device *dssdev,
 	switch (info->type) {
 	case S3D_DISP_OVERUNDER:
 		if (info->sub_samp == S3D_DISP_SUB_SAMPLE_NONE) {
-			tinfo.structure = HDMI_S3D_FRAME_PACKING;
+//			tinfo.structure = HDMI_S3D_FRAME_PACKING;
+//			r = 0;
+			tinfo.structure = HDMI_S3D_TOP_AND_BOTTOM;
 			r = 0;
 		} else {
 			goto err;
@@ -2086,14 +2494,26 @@ static int hdmi_enable_s3d(struct omap_dss_device *dssdev, bool enable)
 	int r = 0;
 
 	/* Timings change between S3D and 2D mode, hence phy needs to reset */
+
+
 	mutex_lock(&hdmi.lock);
 	mutex_lock(&hdmi.lock_aux);
 	if (hdmi.s3d_enabled == enable)
 		goto done;
+	if ( !hdmi.s3d_switch_support )
+	{
+		printk("HDMI doesn't support s3d switching\n");
+		r = 0;		//not an error
+		goto done;
+	}
+	printk("hdmi_enable_s3d(%d)\n", enable);
+	printk("HDMI suport s3d swithcing swithcing to sample(%d), structure(%d), pos(%d)\n",
+			hdmi_s3d.subsamp, hdmi_s3d.structure, hdmi_s3d.subsamp_pos);
 
 	dssdev->panel.s3d_info.type = S3D_DISP_NONE;
 	hdmi.s3d_enabled = enable;
-	r = hdmi_reset(dssdev, OMAP_DSS_RESET_BOTH);
+	//r = hdmi_reset(dssdev, OMAP_DSS_RESET_BOTH);
+	r = hdmi_reset(dssdev, OMAP_DSS_RESET_ON);
 
 	/* hdmi.s3d_enabled will be updated when powering display up */
 	/* if there's no S3D support it will be reset to false */
@@ -2113,6 +2533,7 @@ static int hdmi_enable_s3d(struct omap_dss_device *dssdev, bool enable)
 				dssdev->panel.s3d_info.sub_samp =
 							S3D_DISP_SUB_SAMPLE_H;
 			break;
+		case HDMI_S3D_TOP_AND_BOTTOM:
 		default:
 			dssdev->panel.s3d_info.type = S3D_DISP_OVERUNDER;
 			dssdev->panel.s3d_info.gap = 0;
@@ -2138,14 +2559,16 @@ done:
 	return r;
 }
 
+
 static bool hdmi_get_s3d_enabled(struct omap_dss_device *dssdev)
 {
 	return hdmi.s3d_enabled;
 }
 
+
 int hdmi_init_display(struct omap_dss_device *dssdev)
 {
-	printk(KERN_DEBUG "init_display\n");
+	printk("init_display\n");
 
 	/* register HDMI specific sysfs files */
 	/* note: custom_edid_timing should perhaps be moved here too,
@@ -2156,11 +2579,26 @@ int hdmi_init_display(struct omap_dss_device *dssdev)
 		DSSERR("failed to create sysfs file\n");
 	if (device_create_file(&dssdev->dev, &dev_attr_yuv))
 		DSSERR("failed to create sysfs file\n");
+    if (device_create_file(&dssdev->dev, &dev_attr_hdmi_state))
+        DSSERR("failed to create sysfs file\n");
+	if (device_create_file(&dssdev->dev, &dev_attr_hdmi_out))
+		DSSERR("failed to create sysfs file\n");
+	if (device_create_file(&dssdev->dev, &dev_attr_hdmi_source))
+		DSSERR("failed to create sysfs file\n");
+	if (device_create_file(&dssdev->dev, &dev_attr_hdmi_key))
+		DSSERR("failed to create sysfs file\n");
+	if (device_create_file(&dssdev->dev, &dev_attr_hdmi_drm_lock))
+		DSSERR("failed to create sysfs file\n");
+	if (device_create_file(&dssdev->dev, &dev_attr_hdmi_drm_usr_sel))
+		DSSERR("failed to create sysfs file\n");
+
 	if (device_create_file(&dssdev->dev, &dev_attr_deepcolor))
 		DSSERR("failed to create sysfs file\n");
 	if (device_create_file(&dssdev->dev, &dev_attr_lr_fr))
 		DSSERR("failed to create sysfs file\n");
 	if (device_create_file(&dssdev->dev, &dev_attr_audio_power))
+		DSSERR("failed to create sysfs file\n");
+	if (device_create_file(&dssdev->dev, &dev_attr_code))
 		DSSERR("failed to create sysfs file\n");
 
 	return 0;
@@ -2168,16 +2606,18 @@ int hdmi_init_display(struct omap_dss_device *dssdev)
 
 static int hdmi_read_edid(struct omap_video_timings *dp)
 {
-	int r = 0, ret = 0, code = 0;
+	int r = 0, ret=0, code=0;
 
 	memset(edid, 0, HDMI_EDID_MAX_LENGTH);
 	if (!edid_set)
 		ret = HDMI_CORE_DDC_READEDID(HDMI_CORE_SYS, edid,
 							HDMI_EDID_MAX_LENGTH);
 	if (ret != 0) {
+		edid_set = false;
 		printk(KERN_WARNING "HDMI failed to read E-EDID\n");
 	} else {
 		if (!memcmp(edid, header, sizeof(header))) {
+			hdmi.s3d_switch_support = hdmi_s3d_supported(edid);
 			if (hdmi.s3d_enabled) {
 				/* Update flag to convey if sink supports 3D */
 				hdmi.s3d_enabled = hdmi_s3d_supported(edid);
@@ -2190,7 +2630,8 @@ static int hdmi_read_edid(struct omap_video_timings *dp)
 
 	if (!edid_set) {
 		DSSDBG("fallback to VGA\n");
-		hdmi.code = 4; /*setting default value of 640 480 VGA*/
+
+		hdmi.code = -1; //4; /*setting default value of 640 480 VGA*/ 
 		hdmi.mode = 0;
 	}
 	if (hdmi.s3d_enabled && hdmi_s3d.structure == HDMI_S3D_FRAME_PACKING)
@@ -2219,8 +2660,24 @@ static int hdmi_read_edid(struct omap_video_timings *dp)
  */
 static int get_edid_timing_data(struct HDMI_EDID *edid)
 {
-	u8 i, code, offset = 0, addr = 0;
+	u8 i, j, code, offset = 0, addr = 0;
 	struct hdmi_cm cm;
+	bool audio_support = false;
+	int svd_base, svd_length, svd_code, svd_native;
+
+	/*
+	 *  Verify if the sink supports audio
+	 */
+	/* check if EDID has CEA extension block */
+	if ((edid->extension_edid != 0x00))
+		/* check if CEA extension block is version 3 */
+		if (edid->extention_rev == 3)
+			/* check if extension block has the IEEE HDMI ID*/
+			if (hdmi_has_ieee_id((u8 *)edid))
+				/* check if sink supports basic audio */
+				if (edid->num_dtd & HDMI_AUDIO_BASIC_MASK)
+					audio_support = true;
+
 	/* Seach block 0, there are 4 DTDs arranged in priority order */
 	for (i = 0; i < EDID_SIZE_BLOCK0_TIMING_DESCRIPTOR; i++) {
 		get_edid_timing_info(&edid->DTD[i], &edid_timings);
@@ -2233,11 +2690,42 @@ static int get_edid_timing_data(struct HDMI_EDID *edid)
 			continue;
 		if (hdmi.s3d_enabled && s3d_code_cea[cm.code] == -1)
 			continue;
+		/* if sink supports audio, use CEA video timing */
+		if (audio_support && !cm.mode)
+			continue;
 		hdmi.code = cm.code;
 		hdmi.mode = cm.mode;
 		DSSDBG("code = %d , mode = %d", hdmi.code, hdmi.mode);
 		return 1;
 	}
+	/* Search SVDs in block 1 twice: first natives and then all */
+	if (edid->extension_edid != 0x00) {
+		hdmi_get_video_svds((u8 *)edid, &svd_base, &svd_length);
+		for (j = 1; j >= 0; j--) {
+			for (i = 0; i < svd_length; i++) {
+				svd_native = ((u8 *)edid)[svd_base+i]
+					& HDMI_EDID_EX_VIDEO_NATIVE;
+				svd_code = ((u8 *)edid)[svd_base+i]
+					& HDMI_EDID_EX_VIDEO_MASK;
+				if (svd_code >= ARRAY_SIZE(code_cea))
+					continue;
+				/* Check if this SVD is native*/
+				if (!svd_native && j)
+					continue;
+				/* Check if this 3D CEA timing is supported*/
+				if (hdmi.s3d_enabled &&
+					s3d_code_cea[svd_code] == -1)
+					continue;
+				/* Check if this CEA timing is supported*/
+				if (code_cea[svd_code] == -1)
+					continue;
+				hdmi.code = svd_code;
+				hdmi.mode = 1;
+				return 1;
+			}
+		}
+	}
+	/* Search DTDs in block1 */
 	if (edid->extension_edid != 0x00) {
 		offset = edid->offset_dtd;
 		if (offset != 0)
@@ -2251,6 +2739,9 @@ static int get_edid_timing_data(struct HDMI_EDID *edid)
 			if (cm.code == -1)
 				continue;
 			if (hdmi.s3d_enabled && s3d_code_cea[cm.code] == -1)
+				continue;
+			/* if sink supports audio, use CEA video timing */
+			if (audio_support && !cm.mode)
 				continue;
 			hdmi.code = cm.code;
 			hdmi.mode = cm.mode;
@@ -2283,10 +2774,28 @@ bool is_hdmi_interlaced(void)
 {
 	return hdmi.cfg.interlace;
 }
-
 const struct omap_video_timings *hdmi_get_omap_timing(int ix)
 {
 	if (ix < 0 || ix >= ARRAY_SIZE(all_timings_direct))
 		return NULL;
 	return all_timings_direct + ix;
 }
+
+int hdmi_register_hdcp_callbacks(void (*hdmi_start_frame_cb)(void),
+				 void (*hdmi_stop_frame_cb)(void))
+{
+	hdmi.hdmi_start_frame_cb = hdmi_start_frame_cb;
+	hdmi.hdmi_stop_frame_cb  = hdmi_stop_frame_cb;
+
+	return hdmi_w1_get_video_state();
+}
+EXPORT_SYMBOL(hdmi_register_hdcp_callbacks);
+
+void hdmi_restart(void)
+{
+	struct omap_dss_device *dssdev = get_hdmi_device();
+
+	hdmi_disable_video(dssdev);
+	hdmi_enable_video(dssdev);
+}
+EXPORT_SYMBOL(hdmi_restart);

@@ -28,6 +28,7 @@
 #include <linux/cpu.h>
 #include <linux/completion.h>
 #include <linux/mutex.h>
+#include <linux/timer.h>
 
 #define dprintk(msg...) cpufreq_debug_printk(CPUFREQ_DEBUG_CORE, \
 						"cpufreq-core", msg)
@@ -44,6 +45,11 @@ static DEFINE_PER_CPU(struct cpufreq_policy *, cpufreq_cpu_data);
 static DEFINE_PER_CPU(char[CPUFREQ_NAME_LEN], cpufreq_cpu_governor);
 #endif
 static DEFINE_SPINLOCK(cpufreq_driver_lock);
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+static void cpufreq_early_suspend( struct early_suspend *h );
+static void cpufreq_early_resume( struct early_suspend *h );
+#endif 
 
 /*
  * cpu_policy_rwsem is a per CPU reader-writer semaphore designed to cure
@@ -82,6 +88,13 @@ int lock_policy_rwsem_##mode						\
 	return 0;							\
 }
 
+#define HIGHFREQ 1
+#define LOWFREQ 2
+#define TRUE 1
+#define FALSE 0
+unsigned int max_policy = FALSE; 
+EXPORT_SYMBOL_GPL(max_policy); 
+
 lock_policy_rwsem(read, cpu);
 EXPORT_SYMBOL_GPL(lock_policy_rwsem_read);
 
@@ -110,6 +123,14 @@ static int __cpufreq_governor(struct cpufreq_policy *policy,
 		unsigned int event);
 static unsigned int __cpufreq_get(unsigned int cpu);
 static void handle_update(struct work_struct *work);
+
+static work_func_t handle_rollback(void *data);
+
+/* 
+ * Timer resource for rollback of CPU boost feature 
+ */
+static DECLARE_DELAYED_WORK(cpufreq_tom_rollbackwq, (work_func_t) handle_rollback);
+
 
 /**
  * Two notifier lists: the "policy" list is involved in the
@@ -363,6 +384,20 @@ void cpufreq_notify_transition(struct cpufreq_freqs *freqs, unsigned int state)
 }
 EXPORT_SYMBOL_GPL(cpufreq_notify_transition);
 
+/*********************************************************************
+ *                   EARLY SUSPEND INTERFACE                          *
+ *********************************************************************/
+#ifdef CONFIG_HAS_EARLYSUSPEND
+static void cpufreq_early_suspend( struct early_suspend *h )
+{
+	cpufreq_rollback_policy();
+	pr_info("cpufreq_early_suspend!!!!\n");
+}
+static void cpufreq_early_resume( struct early_suspend *h )
+{
+	pr_info("cpufreq_early_resume!!!\n");
+}
+#endif 
 
 
 /*********************************************************************
@@ -488,6 +523,48 @@ static ssize_t store_##file_name					\
 
 store_one(scaling_min_freq, min);
 store_one(scaling_max_freq, max);
+
+static ssize_t store_scaling_boost_freq(struct cpufreq_policy *policy, 
+		const char *buf, size_t count)
+{
+
+    unsigned int ret = 1;                 
+    unsigned int retval = 0;                 
+    struct cpufreq_policy new_policy;        
+	unsigned int delay = 0; 
+                                    
+    ret = cpufreq_get_policy(&new_policy, policy->cpu);     
+
+	retval = sscanf(buf, "%u", &delay);
+
+	if(!retval)
+		return -EINVAL; 
+
+	if(!delay)
+		return retval; 
+
+	if(delay == HIGHFREQ){
+		new_policy.min = policy->max; 
+		ret = __cpufreq_set_policy(policy, &new_policy);        
+		policy->user_policy.min = policy->min; 
+		return retval; 
+
+	} else if(delay == LOWFREQ) {
+		schedule_delayed_work(&cpufreq_tom_rollbackwq,0); 
+		return retval; 
+	} else {
+
+		printk(KERN_ERR"To configure boost HIGH[1] / ROLLBACK[2] \n"); 
+		return retval; 
+	}
+}
+
+static ssize_t show_scaling_boost_freq(struct cpufreq_policy *policy,
+		char *buf)		
+{							
+	return sprintf(buf, "%u\n", policy->min);	
+}
+
 
 /**
  * show_cpuinfo_cur_freq - current CPU frequency as detected by hardware
@@ -676,6 +753,7 @@ cpufreq_freq_attr_rw(scaling_min_freq);
 cpufreq_freq_attr_rw(scaling_max_freq);
 cpufreq_freq_attr_rw(scaling_governor);
 cpufreq_freq_attr_rw(scaling_setspeed);
+cpufreq_freq_attr_rw(scaling_boost_freq);
 
 static struct attribute *default_attrs[] = {
 	&cpuinfo_min_freq.attr,
@@ -689,6 +767,7 @@ static struct attribute *default_attrs[] = {
 	&scaling_driver.attr,
 	&scaling_available_governors.attr,
 	&scaling_setspeed.attr,
+	&scaling_boost_freq.attr,		
 	NULL
 };
 
@@ -1230,6 +1309,12 @@ static int cpufreq_remove_dev(struct sys_device *sys_dev)
 	return retval;
 }
 
+static work_func_t handle_rollback(void *data)
+{
+	dprintk("handle_rollback for cpu called\n");
+	cpufreq_rollback_policy();
+	return 0; 
+}
 
 static void handle_update(struct work_struct *work)
 {
@@ -1531,6 +1616,44 @@ int __cpufreq_driver_target(struct cpufreq_policy *policy,
 	return retval;
 }
 EXPORT_SYMBOL_GPL(__cpufreq_driver_target);
+
+int cpufreq_driver_target_max_bycpuid(unsigned int cpu,
+			  unsigned int is_max)
+{
+	int ret = -EINVAL;
+	unsigned int target_freq; 
+	unsigned int relation; 
+	struct cpufreq_policy *policy = cpufreq_cpu_get(cpu);
+
+	if (!policy)
+		goto no_policy;
+
+	if(is_max){
+		target_freq = policy->max;
+		relation = CPUFREQ_RELATION_H; 
+	}
+	else{
+		target_freq = policy->min;
+		relation = CPUFREQ_RELATION_L;
+	}
+	
+	if (unlikely(lock_policy_rwsem_write(policy->cpu)))
+		goto fail;
+
+	ret = __cpufreq_driver_target(policy, target_freq, relation);
+
+	unlock_policy_rwsem_write(policy->cpu);
+
+	dprintk(KERN_ERR" Fourth cpu [%u] target_freq [%u] relation [%u] \n", 
+			cpu,
+			target_freq,
+			relation); 
+fail:
+	cpufreq_cpu_put(policy);
+no_policy:
+	return ret;
+}
+EXPORT_SYMBOL_GPL(cpufreq_driver_target_max_bycpuid);
 
 int cpufreq_driver_target(struct cpufreq_policy *policy,
 			  unsigned int target_freq,
@@ -1846,6 +1969,51 @@ no_policy:
 }
 EXPORT_SYMBOL(cpufreq_update_policy);
 
+/**
+ *	cpufreq_rollback_policy- re-evaluate an existing cpufreq policy
+ *	@cpu: CPU which shall be re-evaluated
+ *
+ *	Usefull for policy notifiers which have different necessities
+ *	at different times.
+ */
+int cpufreq_rollback_policy(void)
+{
+	unsigned int cpu = 0;
+	unsigned int min_freq = 0; 
+	struct cpufreq_policy *data = cpufreq_cpu_get(cpu);
+	struct cpufreq_policy policy;
+	int ret;
+	struct cpufreq_frequency_table *table;
+
+	table = cpufreq_frequency_get_table(cpu);
+	min_freq = table[0].frequency; 
+
+	if (!data) {
+		ret = -ENODEV;
+		goto no_policy;
+	}
+
+	if (unlikely(lock_policy_rwsem_write(cpu))) {
+		ret = -EINVAL;
+		goto fail;
+	}
+
+	dprintk("updating policy for CPU %u\n", cpu);
+	memcpy(&policy, data, sizeof(struct cpufreq_policy));
+	policy.min = min_freq;
+
+	ret = __cpufreq_set_policy(data, &policy);
+	policy.user_policy.min = policy.min;
+	unlock_policy_rwsem_write(cpu);
+
+fail:
+	cpufreq_cpu_put(data);
+no_policy:
+	return ret;
+}
+
+EXPORT_SYMBOL(cpufreq_rollback_policy);
+
 static int __cpuinit cpufreq_cpu_callback(struct notifier_block *nfb,
 					unsigned long action, void *hcpu)
 {
@@ -1948,6 +2116,15 @@ int cpufreq_register_driver(struct cpufreq_driver *driver_data)
 		dprintk("driver %s up and running\n", driver_data->name);
 		cpufreq_debug_enable_ratelimit();
 	}
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	if(cpufreq_driver != NULL) {
+		cpufreq_driver->cpufreq_early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN;
+		cpufreq_driver->cpufreq_early_suspend.suspend = cpufreq_early_suspend;
+		cpufreq_driver->cpufreq_early_suspend.resume = cpufreq_early_resume;
+		register_early_suspend(&cpufreq_driver->cpufreq_early_suspend);
+	}
+#endif
 
 	return ret;
 }

@@ -577,6 +577,7 @@ void __init omap_vram_reserve_sdram(void)
 		}
 
 		paddr = virt_to_phys(alloc_bootmem_pages(size));
+		if(paddr == NULL) return;
 		BUG_ON(paddr & ~PAGE_MASK);
 	}
 

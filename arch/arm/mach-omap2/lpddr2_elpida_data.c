@@ -97,6 +97,7 @@ const struct lpddr2_min_tck min_tck_elpida = {
 	.tFAW		= 8
 };
 
+#if 0
 struct lpddr2_device_info elpida_2G_S4 = {
 	.device_timings = {
 		&timings_elpida_200_mhz,
@@ -108,3 +109,31 @@ struct lpddr2_device_info elpida_2G_S4 = {
 	.density	= LPDDR2_DENSITY_2Gb,
 	.io_width	= LPDDR2_IO_WIDTH_32
 };
+#else
+struct lpddr2_device_info elpida_2G_S2 = {
+	.device_timings = {
+		&timings_elpida_200_mhz,
+		&timings_elpida_333_mhz,
+		&timings_elpida_400_mhz
+	},
+	.min_tck	= &min_tck_elpida,
+	.type		= LPDDR2_TYPE_S2,
+	.density	= LPDDR2_DENSITY_2Gb,
+	.io_width	= LPDDR2_IO_WIDTH_32
+};
+
+#if defined (CONFIG_MACH_LGE_CX2) 
+struct lpddr2_device_info elpida_4G_S4 = {
+	.device_timings = {
+		&timings_elpida_200_mhz,
+		&timings_elpida_333_mhz,
+		&timings_elpida_400_mhz
+	},
+	.min_tck	= &min_tck_elpida,
+	.type		= LPDDR2_TYPE_S4,
+	.density	= LPDDR2_DENSITY_4Gb,
+	.io_width	= LPDDR2_IO_WIDTH_32
+};
+#endif
+
+#endif

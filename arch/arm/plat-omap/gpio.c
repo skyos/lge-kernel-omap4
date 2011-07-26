@@ -1575,6 +1575,29 @@ static void omap_gpio_mod_init(struct gpio_bank *bank)
 {
 	if (cpu_class_is_omap2()) {
 		if (cpu_is_omap44xx()) {
+//LGE_CHANGE_S [david.seo@lge.com] 2011-01-30, common : after sleep, incomming call bug fix
+#if 1     /* JamesLee */
+			static const u32 non_wakeup_gpios[] = {
+				0x04000000, // 31 ~ 00		26: CP_CRASH_INT
+				0x00100500, // 63 ~ 32		40:MICROSD_DET	42:MICROSD_COVER_DET	52: TOUCH_INT
+				0x00000000, // 95 ~ 64
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
+/* Disable SPI codes in case of MIPI HSI */
+#if defined(CONFIG_OMAP_HSI)
+				0x00000000,
+#else /* CONFIG_SPI_IFX */
+				0x00800000, // 127 ~ 96		119: IPC_SRDY
+#endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]		
+				0x00000000, // 159 ~ 128
+				0x000000C0  // 191 ~ 160	167: WLAN_HOST_WAKEUP		166: BT
+			};
+			if (bank->id < ARRAY_SIZE(non_wakeup_gpios))
+				bank->non_wakeup_gpios =
+						non_wakeup_gpios[bank->id];
+#endif
+//LGE_CHANGE_E [david.seo@lge.com] 2011-01-30, common : after sleep, incomming call bug fix
+
 			__raw_writel(0xffffffff, bank->base +
 					OMAP4_GPIO_IRQSTATUSCLR0);
 			__raw_writel(0x00000000, bank->base +
@@ -2128,6 +2151,8 @@ static void omap_gpio_restore_context(struct device *dev)
 				bank->base + OMAP4_GPIO_WAKE_EN);
 		__raw_writel(bank->gpio_context.ctrl,
 				bank->base + OMAP4_GPIO_CTRL);
+		__raw_writel(bank->gpio_context.dataout,
+				bank->base + OMAP4_GPIO_DATAOUT);
 		__raw_writel(bank->gpio_context.oe,
 				bank->base + OMAP4_GPIO_OE);
 		__raw_writel(bank->gpio_context.leveldetect0,
@@ -2138,8 +2163,6 @@ static void omap_gpio_restore_context(struct device *dev)
 				bank->base + OMAP4_GPIO_RISINGDETECT);
 		__raw_writel(bank->gpio_context.fallingdetect,
 				bank->base + OMAP4_GPIO_FALLINGDETECT);
-		__raw_writel(bank->gpio_context.dataout,
-				bank->base + OMAP4_GPIO_DATAOUT);
 	}
 }
 

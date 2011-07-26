@@ -82,6 +82,7 @@
 /* INTMR (0x04) fields */
 
 #define TWL6040_PLUGMSK			0x02
+#define TWL6040_HOOKMSK			0x08
 #define TWL6040_READYMSK		0x40
 #define TWL6040_ALLINT_MSK		0x7B
 
@@ -118,6 +119,12 @@
 #define TWL6040_LPLLFIN			0x08
 #define TWL6040_HPLLSEL			0x10
 
+/* AMICBCTL (0x0a) fields */
+#define TWL6040_HMICENA			0x01
+#define TWL6040_HMICBSLP		0x02
+#define TWL6040_HMICBPD			0x04
+#define TWL6040_HMICBSCDIS		0x08
+
 /* HSLCTL (0x10) fields */
 
 #define TWL6040_HSDACMODEL		0x02
@@ -138,6 +145,9 @@
 #define TWL6040_VIBCTRLRP		0x04
 #define TWL6040_VIBENAR			0x01
 
+/* HKCTL1 (0x1C) fields */
+#define TWL6040_HKEN					0x01
+
 /* ACCCTL (0x2D) fields */
 
 #define TWL6040_RESETSPLIT		0x04
@@ -149,7 +159,7 @@
 #define TWL6040_LPPLL_ID		2
 
 /* STATUS (0x2E) fields */
-
+#define TWL6040_HKCOMP					0x01
 #define TWL6040_PLUGCOMP		0x02
 
 enum twl6040_codec_res {

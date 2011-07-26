@@ -276,6 +276,12 @@ struct s3d_ovl_device {
 	bool override_s3d_disp;
 	struct s3d_disp_info s3d_disp_info;
 
+	bool wb_buf_proc_idx;
+	bool wb_buf_disp_idx;
+
+	bool wb_start_kicking;
+	bool wb_avoid_kick;
+
 	/* workqueue for manual update */
 	struct workqueue_struct *workqueue;
 };

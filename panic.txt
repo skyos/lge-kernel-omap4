@@ -1,0 +1,458 @@
+o detect SREADY within 128, RETRY (counter=3) *****
+<4>[  354.369323] ***** unable to detect SREADY within 128, RETRY (counter=4) *****
+<4>[  355.375579] ***** unable to detect SREADY within 128, RETRY (counter=5) *****
+<4>[  356.384979] ***** unable to detect SREADY within 128, RETRY (counter=6) *****
+<4>[  357.392761] ***** unable to detect SREADY within 128, RETRY (counter=7) *****
+<4>[  358.398834] ***** unable to detect SREADY within 128, RETRY (counter=8) *****
+<4>[  358.407714] 
+<4>[  358.407714] TS0710:ts_ldisc_tx_looper:data_size=58, res=0
+<4>[  359.414428] ***** unable to detect SREADY within 128, RETRY (counter=1) *****
+<4>[  360.424041] ***** unable to detect SREADY within 128, RETRY (counter=2) *****
+<4>[  361.430084] ***** unable to detect SREADY within 128, RETRY (counter=3) *****
+<4>[  362.439849] ***** unable to detect SREADY within 128, RETRY (counter=4) *****
+<4>[  363.447631] ***** unable to detect SREADY within 128, RETRY (counter=5) *****
+<4>[  364.457611] ***** unable to detect SREADY within 128, RETRY (counter=6) *****
+<4>[  365.463287] ***** unable to detect SREADY within 128, RETRY (counter=7) *****
+<4>[  366.470947] ***** unable to detect SREADY within 128, RETRY (counter=8) *****
+<4>[  366.479827] 
+<4>[  366.479827] TS0710:ts_ldisc_tx_looper:data_size=58, res=0
+<4>[  367.484741] ***** unable to detect SREADY within 128, RETRY (counter=1) *****
+<4>[  368.492675] ***** unable to detect SREADY within 128, RETRY (counter=2) *****
+<4>[  369.502441] ***** unable to detect SREADY within 128, RETRY (counter=3) *****
+<4>[  370.510192] ***** unable to detect SREADY within 128, RETRY (counter=4) *****
+<4>[  371.515960] ***** unable to detect SREADY within 128, RETRY (counter=5) *****
+<4>[  372.523803] ***** unable to detect SREADY within 128, RETRY (counter=6) *****
+<4>[  373.533355] ***** unable to detect SREADY within 128, RETRY (counter=7) *****
+<4>[  374.541259] ***** unable to detect SREADY within 128, RETRY (counter=8) *****
+<4>[  374.550140] 
+<4>[  374.550170] TS0710:ts_ldisc_tx_looper:data_size=66, res=0
+<4>[  375.555023] ***** unable to detect SREADY within 128, RETRY (counter=1) *****
+<4>[  376.562866] ***** unable to detect SREADY within 128, RETRY (counter=2) *****
+<4>[  377.572570] ***** unable to detect SREADY within 128, RETRY (counter=3) *****
+<4>[  378.580444] ***** unable to detect SREADY within 128, RETRY (counter=4) *****
+<4>[  379.585998] ***** unable to detect SREADY within 128, RETRY (counter=5) *****
+<4>[  380.588104] ***** unable to detect SREADY within 128, RETRY (counter=6) *****
+<4>[  381.594116] ***** unable to detect SREADY within 128, RETRY (counter=7) *****
+<4>[  382.601959] ***** unable to detect SREADY within 128, RETRY (counter=8) *****
+<4>[  382.610992] 
+<4>[  382.611022] TS0710:ts_ldisc_tx_looper:data_size=66, res=0
+<4>[  383.619506] ***** unable to detect SREADY within 128, RETRY (counter=1) *****
+<4>[  384.627197] ***** unable to detect SREADY within 128, RETRY (counter=2) *****
+<4>[  385.633209] ***** unable to detect SREADY within 128, RETRY (counter=3) *****
+<4>[  386.640960] ***** unable to detect SREADY within 128, RETRY (counter=4) *****
+<4>[  387.648773] ***** unable to detect SREADY within 128, RETRY (counter=5) *****
+<4>[  388.656616] ***** unable to detect SREADY within 128, RETRY (counter=6) *****
+<4>[  389.666595] ***** unable to detect SREADY within 128, RETRY (counter=7) *****
+<4>[  390.674194] ***** unable to detect SREADY within 128, RETRY (counter=8) *****
+<4>[  390.683044] 
+<4>[  390.683044] TS0710:ts_ldisc_tx_looper:data_size=58, res=0
+<4>[  391.689178] ***** unable to detect SREADY within 128, RETRY (counter=1) *****
+<4>[  392.697692] ***** unable to detect SREADY within 128, RETRY (counter=2) *****
+<4>[  393.704437] ***** unable to detect SREADY within 128, RETRY (counter=3) *****
+<4>[  394.713165] ***** unable to detect SREADY within 128, RETRY (counter=4) *****
+<4>[  395.719085] ***** unable to detect SREADY within 128, RETRY (counter=5) *****
+<4>[  396.726989] ***** unable to detect SREADY within 128, RETRY (counter=6) *****
+<4>[  397.736541] ***** unable to detect SREADY within 128, RETRY (counter=7) *****
+<4>[  398.744293] ***** unable to detect SREADY within 128, RETRY (counter=8) *****
+<4>[  398.753112] 
+<4>[  398.753143] TS0710:ts_ldisc_tx_looper:data_size=66, res=0
+<4>[  399.760131] ***** unable to detect SREADY within 128, RETRY (counter=1) *****
+<4>[  400.766113] ***** unable to detect SREADY within 128, RETRY (counter=2) *****
+<4>[  401.773742] ***** unable to detect SREADY within 128, RETRY (counter=3) *****
+<4>[  402.781616] ***** unable to detect SREADY within 128, RETRY (counter=4) *****
+<4>[  403.791076] ***** unable to detect SREADY within 128, RETRY (counter=5) *****
+<4>[  404.799011] ***** unable to detect SREADY within 128, RETRY (counter=6) *****
+<4>[  405.806793] ***** unable to detect SREADY within 128, RETRY (counter=7) *****
+<4>[  406.812835] ***** unable to detect SREADY within 128, RETRY (counter=8) *****
+<4>[  406.821716] 
+<4>[  406.821716] TS0710:ts_ldisc_tx_looper:data_size=66, res=0
+<4>[  407.828491] ***** unable to detect SREADY within 128, RETRY (counter=1) *****
+<4>[  408.838043] ***** unable to detect SREADY within 128, RETRY (counter=2) *****
+<4>[  409.844299] ***** unable to detect SREADY within 128, RETRY (counter=3) *****
+<4>[  410.853851] ***** unable to detect SREADY within 128, RETRY (counter=4) *****
+<4>[  411.861511] ***** unable to detect SREADY within 128, RETRY (counter=5) *****
+<4>[  412.869354] ***** unable to detect SREADY within 128, RETRY (counter=6) *****
+<4>[  413.877288] ***** unable to detect SREADY within 128, RETRY (counter=7) *****
+<4>[  414.885101] ***** unable to detect SREADY within 128, RETRY (counter=8) *****
+<4>[  414.893981] 
+<4>[  414.894012] TS0710:ts_ldisc_tx_looper:data_size=66, res=0
+<4>[  415.900939] ***** unable to detect SREADY within 128, RETRY (counter=1) *****
+<4>[  416.908416] ***** unable to detect SREADY within 128, RETRY (counter=2) *****
+<4>[  417.914459] ***** unable to detect SREADY within 128, RETRY (counter=3) *****
+<4>[  418.923736] ***** unable to detect SREADY within 128, RETRY (counter=4) *****
+<4>[  419.932128] ***** unable to detect SREADY within 128, RETRY (counter=5) *****
+<4>[  420.939788] ***** unable to detect SREADY within 128, RETRY (counter=6) *****
+<4>[  421.947631] ***** unable to detect SREADY within 128, RETRY (counter=7) *****
+<4>[  422.955230] ***** unable to detect SREADY within 128, RETRY (counter=8) *****
+<4>[  422.964111] 
+<4>[  422.964111] TS0710:ts_ldisc_tx_looper:data_size=66, res=0
+<4>[  423.970886] ***** unable to detect SREADY within 128, RETRY (counter=1) *****
+<4>[  424.981079] ***** unable to detect SREADY within 128, RETRY (counter=2) *****
+<4>[  425.986846] ***** unable to detect SREADY within 128, RETRY (counter=3) *****
+<4>[  426.994476] ***** unable to detect SREADY within 128, RETRY (counter=4) *****
+<4>[  428.002319] ***** unable to detect SREADY within 128, RETRY (counter=5) *****
+<4>[  429.010101] ***** unable to detect SREADY within 128, RETRY (counter=6) *****
+<6>[  429.343261] suspend: enter suspend
+<6>[  429.347106] PM: Syncing filesystems ... done.
+<7>[  429.354248] PM: Preparing system for mem sleep
+<4>[  429.359222] Freezing user space processes ... (elapsed 0.03 seconds) done.
+<4>[  429.402069] Freezing remaining freezable tasks ... (elapsed 0.02 seconds) done.
+<7>[  429.433197] PM: Entering mem sleep
+<4>[  429.436950] ([elasped_time=1316084929sec, suspend]2011-09-15 11:08:49.941589356 UTC, battery capa=72, volt=4028)
+<4>[  429.448089] Suspending console(s) (use no_console_suspend to debug)
+<6>[  429.467437] i2c i2c-4: mpu_suspend: Already suspended 2
+<4>[  429.467468] apds9900_suspend [0][1]
+<4>[  429.472259] 
+<4>[  429.472259] (IOS backup)
+<4>[  429.472259] mmc1: clock 0Hz busmode 1 powermode 0 cs 0 Vdd 0 width 0 timing 0
+<4>[  429.485473] charging_ic_suspend 
+<6>[  429.485992] PM: suspend of devices complete after 28.747 msecs
+<6>[  429.488311] power_suspend_late return 0
+<6>[  429.488342] PM: late suspend of devices complete after 1.159 msecs
+<4>[  429.488372] Disabling non-boot CPUs ...
+<6>[  429.488433] SCXLNXDeviceSuspend: Enter
+<4>[  705.207946] count=0, pre_mpu_m3_clkctrl=0x70000, CM_MPU_M3_MPU_M3_CLKCTRL: 0x70000
+<6>[  705.207977] Read Powerdomain states as ...
+<6>[  705.207977] 0 : OFF, 1 : RETENTION, 2 : ON-INACTIVE, 3 : ON-ACTIVE
+<6>[  705.208007] Powerdomain (core_pwrdm) entered state 3
+<6>[  705.208038] Powerdomain (gfx_pwrdm) is in state 0
+<6>[  705.208038] Powerdomain (abe_pwrdm) entered state 1
+<6>[  705.208068] Powerdomain (dss_pwrdm) is in state 1
+<6>[  705.208099] Powerdomain (tesla_pwrdm) entered state 1
+<6>[  705.208099] Powerdomain (wkup_pwrdm) is in state 0
+<6>[  705.208129] Powerdomain (cpu0_pwrdm) entered state 0
+<6>[  705.208160] Powerdomain (cpu1_pwrdm) entered state 0
+<6>[  705.208160] Powerdomain (emu_pwrdm) is in state 0
+<6>[  705.208190] Powerdomain (mpu_pwrdm) entered state 3
+<6>[  705.208221] Powerdomain (ivahd_pwrdm) entered state 1
+<6>[  705.208221] Powerdomain (cam_pwrdm) is in state 0
+<6>[  705.208251] Powerdomain (l3init_pwrdm) entered state 1
+<6>[  705.208282] Powerdomain (l4per_pwrdm) entered state 3
+<6>[  705.208282] Powerdomain (always_on_core_pwrdm) is in state 0
+<6>[  705.208312] Powerdomain (cefuse_pwrdm) is in state 0
+<6>[  705.208587] wakeup wake lock: alarm
+<6>[  705.209228] PM: early resume of devices complete after 0.427 msecs
+<4>[  705.211364] charging_ic_resume 
+<4>[  705.216186] powerbutton_work_func [0][1][0]
+<4>[  705.410888] 
+<4>[  705.410888] (IOS restore)
+<4>[  705.410919] mmc1: clock 0Hz busmode 1 powermode 0 cs 0 Vdd 0  width 0 timing 0
+<6>[  705.413085] i2c i2c-4: mpu_resume for pid 171
+<4>[  705.416534] powerbutton_work_func [0][0][1]
+<6>[  705.433654] PM: resume of devices complete after 223.846 msecs
+<4>[  705.640197] 
+<4>[  705.640197] ([elasped_time=276sec, resume]2011-09-15 11:13:25.707183832 UTC, battery capa=73, volt=4032)
+<7>[  705.652404] PM: Finishing wakeup.
+<4>[  705.656188] Restarting tasks ... 
+<6>[  705.680389] request_suspend_state: wakeup (3->0) at 430358764651 (2011-09-15 11:13:25.747344971 UTC) state[3]
+<4>[  705.721435] done.
+<6>[  705.723999] suspend: exit suspend, ret = 0 (2011-09-15 11:13:25.790985106 UTC)
+<4>[  705.734008] apds9900_store_interrupt = [2] apds_9900_initlizatied [1] 
+<4>[  705.741271] ***** unable to detect SREADY within 128, RETRY (counter=7) *****
+<4>[  705.750213] apds9900_store_interrupt ignore
+<4>[  705.754638] apds9900_store_interrupt = [5] apds_9900_initlizatied [1] 
+<6>[  705.761749] late_resume: call handlers
+<7>[  705.765716] gpio_request: gpio-144 (dsi2_lcd_en) status -16
+<4>[  705.771942] apds9900_set_enable = [13][0] 
+<4>[  705.776275] apds9900_store_interrupt enable_status = [13] data->enable [13] 
+<4>[  705.785736] brightness_store = [40][0] 
+<4>[  705.812683] brightness_store = [40][0] 
+<4>[  705.838562] brightness_store = [40][0] 
+<4>[  705.845306] [JamesLee] dss_opt_clock_enable() = 0
+<4>[  705.850372] [JamesLee] pm_runtime_get_sync() = 0
+<4>[  705.855346] brightness_store = [40][0] 
+<4>[  705.860534] tclk_post=37, tclk_trail=13
+<4>[  705.864562] [ALBERTO] DSI timings [hbp:101 hfp:20 hsa:58] [vbp:22 vfp:1 vsa:8]
+<4>[  705.872497] brightness_store = [40][0] 
+<4>[  705.877441] [ALBERTO] DISPC:hsw=51 hbp=19 x_res=480 hfp=14 
+<4>[  705.883300] [ALBERTO] pix_size=24 data_lanes=2 pixels_per_line=480 vm_tl=0x34e
+<4>[  705.890991] brightness_store = [40][0] 
+<4>[  705.895568] TA_TO 6400000 ns (0x12f2 ticks x8 x16)
+<4>[  705.900634] LP_RX_TO 48000 ns (0x1230 ticks)
+<4>[  705.905090] HS_TX_TO 1000000 ns (0xa41 ticks x16)
+<4>[  705.910125] brightness_store = [40][0] 
+<4>[  705.926727] brightness_store = [40][0] 
+<4>[  705.955505] brightness_store = [40][0] 
+<4>[  705.978027] brightness_store = [40][0] 
+<4>[  705.983459] 
+<4>[  705.983459] TS0710:node_put_to_send:max_frame_usage=47
+<4>[  705.994445] brightness_store = [40][0] 
+<4>[  706.010162] brightness_store = [40][0] 
+<4>[  706.061401] brightness_store = [52][0] 
+<4>[  706.100799] brightness_store = [68][0] 
+<4>[  706.122985] synaptics_ts_resume() - 3 [1]
+<4>[  706.129913] brightness_store = [84][0] 
+<6>[  706.151977] cpufreq_early_resume!!!
+<6>[  706.161468] late_resume: done
+<4>[  706.187255] CPU1: Booted secondary processor
+<4>[  706.219604] apds_9900_irq_work_func status =[11][1]
+<4>[  706.232055] apds9900_set_enable = [0][0] 
+<4>[  706.236633] light sensor report lux =10 cdata = 2 irdata = 1, pdata= 0
+<4>[  706.248229] apds9900_set_enable = [13][0] 
+<4>[  706.455230] synaptics_ts_reset_delayed_work() Reset[81]
+<4>[  706.743804] ***** unable to detect SREADY within 128, RETRY (counter=8) *****
+<4>[  706.753723] 
+<4>[  706.753723] TS0710:ts_ldisc_tx_looper:data_size=66, res=0
+<4>[  707.766967] ***** unable to detect SREADY within 128, RETRY (counter=1) *****
+<4>[  708.774749] ***** unable to detect SREADY within 128, RETRY (counter=2) *****
+<4>[  709.774810] ***** unable to detect SREADY within 128, RETRY (counter=3) *****
+<4>[  710.782592] ***** unable to detect SREADY within 128, RETRY (counter=4) *****
+<4>[  711.790344] ***** unable to detect SREADY within 128, RETRY (counter=5) *****
+<4>[  712.798248] ***** unable to detect SREADY within 128, RETRY (counter=6) *****
+<4>[  713.806488] ***** unable to detect SREADY within 128, RETRY (counter=7) *****
+<4>[  714.813842] ***** unable to detect SREADY within 128, RETRY (counter=8) *****
+<4>[  714.821868] 
+<4>[  714.821868] TS0710:ts_ldisc_tx_looper:data_size=17, res=0
+<4>[  715.155639] CPU1: Booted secondary processor
+<4>[  715.852935] ***** unable to detect SREADY within 128, RETRY (counter=1) *****
+<4>[  716.852996] ***** unable to detect SREADY within 128, RETRY (counter=2) *****
+<4>[  717.876373] ***** unable to detect SREADY within 128, RETRY (counter=3) *****
+<4>[  718.876342] ***** unable to detect SREADY within 128, RETRY (counter=4) *****
+<4>[  719.891937] ***** unable to detect SREADY within 128, RETRY (counter=5) *****
+<4>[  720.899749] ***** unable to detect SREADY within 128, RETRY (counter=6) *****
+<6>[  721.011932] TS07.10: ts_ldisc_close 
+<4>[  721.907592] ***** unable to detect SREADY within 128, RETRY (counter=7) *****
+<4>[  722.915588] ***** unable to detect SREADY within 128, RETRY (counter=8) *****
+<4>[  722.924591] 
+<4>[  722.924621] TS0710:ts_ldisc_tx_looper:data_size=17, res=0
+<6>[  722.932891] TS07.10: ts_ldisc_close - tty->disc_data = dc313800
+<6>[  722.939575] TS07.10: ts_ldisc_close - start recovery mode!!
+<4>[  722.945770] ifx_pmu_reset:(2011-09-15 11:13:43.012786864 UTC)
+<7>[  722.952239] gpio_request: gpio-164 (ifx pwron) status -16
+<4>[  723.384094] ------------[ cut here ]------------
+<4>[  723.389282] WARNING: at net/sched/sch_generic.c:258 dev_watchdog+0x248/0x268()
+<6>[  723.397247] NETDEV WATCHDOG: vsnet0 (): transmit queue 0 timed out
+<4>[  723.404083] Modules linked in: fm_v4l2_drv btwilink fm_drv(C)
+<4>[  723.410766] Backtrace: 
+<4>[  723.410888] [<c004e5a0>] (dump_backtrace+0x0/0x10c) from [<c05703f8>] (dump_stack+0x18/0x1c)
+<4>[  723.410919]  r7:00000009 r6:00000102 r5:c044a930 r4:dbcdba40
+<4>[  723.411071] [<c05703e0>] (dump_stack+0x0/0x1c) from [<c0096914>] (warn_slowpath_common+0x54/0x6c)
+<4>[  723.411132] [<c00968c0>] (warn_slowpath_common+0x0/0x6c) from [<c00969d0>] (warn_slowpath_fmt+0x38/0x40)
+<4>[  723.411163]  r9:ffffffff r8:c08163b4 r7:c0720080 r6:00000000 r5:dbea31f4
+<4>[  723.411224] r4:dbea3000
+<4>[  723.411315] [<c0096998>] (warn_slowpath_fmt+0x0/0x40) from [<c044a930>] (dev_watchdog+0x248/0x268)
+<4>[  723.411346]  r3:dbea3000 r2:c06e7a34
+<4>[  723.411407] [<c044a6e8>] (dev_watchdog+0x0/0x268) from [<c00a20b0>] (run_timer_softirq+0x138/0x258)
+<4>[  723.411499] [<c00a1f78>] (run_timer_softirq+0x0/0x258) from [<c009cda0>] (__do_softirq+0xb8/0x154)
+<4>[  723.411590] [<c009cce8>] (__do_softirq+0x0/0x154) from [<c009ced4>] (irq_exit+0x98/0xa0)
+<4>[  723.411651] [<c009ce3c>] (irq_exit+0x0/0xa0) from [<c004f788>] (ipi_timer+0x44/0x4c)
+<4>[  723.411682]  r5:c078e2d4 r4:c0bd0050
+<4>[  723.411804] [<c004f744>] (ipi_timer+0x0/0x4c) from [<c00493e0>] (do_local_timer+0x5c/0x78)
+<4>[  723.411834]  r5:c078e2d4 r4:dbcda000
+<4>[  723.411926] [<c0049384>] (do_local_timer+0x0/0x78) from [<c0049d08>] (__irq_svc+0x48/0xe0)
+<4>[  723.411956] Exception stack(0xdbcdbbc8 to 0xdbcdbc10)
+<4>[  723.412017] bbc0:                   000cfb39 c0791d34 00001dc0 00000001 0000004d dc313000
+<4>[  723.412078] bbe0: 00000100 c079d698 00000000 00000001 00000000 dbcdbc64 dbcdbba8 dbcdbc10
+<4>[  723.412139] bc00: c03935e0 c0253660 20000013 ffffffff
+<4>[  723.412170]  r9:dbcda000 r8:00000001 r7:00000002 r6:0000001d r5:fa240100
+<4>[  723.412200] r4:ffffffff
+<4>[  723.412261] [<c0393544>] (ifx_pmu_reset+0x0/0x188) from [<c02ee594>] (ts_ldisc_close+0xf8/0x160)
+<4>[  723.412292]  r4:c079cff0
+<4>[  723.412353] [<c02ee49c>] (ts_ldisc_close+0x0/0x160) from [<c02a981c>] (tty_ldisc_close+0x48/0x60)
+<4>[  723.412384]  r9:00000001 r8:dc3b4fa8 r7:00000000 r6:dc3130a4 r5:dbd1a8e0
+<4>[  723.412414] r4:dc313000
+<4>[  723.412445] [<c02a97d4>] (tty_ldisc_close+0x0/0x60) from [<c02a9914>] (tty_ldisc_release+0x38/0x70)
+<4>[  723.412475]  r7:00000000 r6:dc313014 r5:00000000 r4:dc313000
+<4>[  723.412567] [<c02a98dc>] (tty_ldisc_release+0x0/0x70) from [<c02a498c>] (tty_release+0x408/0x57c)
+<4>[  723.412567]  r7:00000000 r6:dc375b40 r5:00000000 r4:dc313000
+<4>[  723.412719] [<c02a4584>] (tty_release+0x0/0x57c) from [<c011736c>] (fput+0x108/0x204)
+<4>[  723.412750] [<c0117264>] (fput+0x0/0x204) from [<c0114298>] (filp_close+0x60/0x80)
+<4>[  723.412811] [<c0114238>] (filp_close+0x0/0x80) from [<c0099018>] (put_files_struct+0x130/0x15c)
+<4>[  723.412841]  r7:dcaa7460 r6:dbd1a9a0 r5:01ffff7f r4:00000000
+<4>[  723.412872] [<c0098ee8>] (put_files_struct+0x0/0x15c) from [<c0099084>] (exit_files+0x40/0x44)
+<4>[  723.412933] [<c0099044>] (exit_files+0x0/0x44) from [<c009aab4>] (do_exit+0x564/0x67c)
+<4>[  723.412963]  r7:dbcdbec8 r6:dbcda000 r5:00000009 r4:dc3e0340
+<4>[  723.412994] [<c009a550>] (do_exit+0x0/0x67c) from [<c009ac1c>] (do_group_exit+0x50/0xc4)
+<4>[  723.413055] [<c009abcc>] (do_group_exit+0x0/0xc4) from [<c00a61e8>] (get_signal_to_deliver+0x2ac/0x3f8)
+<4>[  723.413085]  r7:dbcdbec8 r6:dc3d3980 r5:dbcda000 r4:00000009
+<4>[  723.413146] [<c00a5f3c>] (get_signal_to_deliver+0x0/0x3f8) from [<c004d2a4>] (do_signal+0x68/0x60c)
+<4>[  723.413177] [<c004d23c>] (do_signal+0x0/0x60c) from [<c004d888>] (do_notify_resume+0x40/0x4c)
+<4>[  723.413238] [<c004d848>] (do_notify_resume+0x0/0x4c) from [<c004a290>] (work_pending+0x1c/0x20)
+<4>[  723.413269]  r5:ae611d6c r4:40308ab4
+<4>[  723.413299] ---[ end trace 185657d588ce3dcd ]---
+<4>[  723.413330] vsnet0: transmit timed out, bad line quality?
+<4>[  723.676757] ifx_power_low- [CP POWER]: pin 0
+<4>[  724.367584] ifx_power_high- [CP POWER]: pin 1
+<4>[  724.372375] ------------[ cut here ]------------
+<4>[  724.377471] WARNING: at drivers/gpio/gpiolib.c:103 gpio_ensure_requested+0x50/0x114()
+<4>[  724.386016] autorequest GPIO-3
+<4>[  724.389373] Modules linked in: fm_v4l2_drv btwilink fm_drv(C)
+<4>[  724.395782] Backtrace: 
+<4>[  724.398529] [<c004e5a0>] (dump_backtrace+0x0/0x10c) from [<c05703f8>] (dump_stack+0x18/0x1c)
+<4>[  724.407836]  r7:00000009 r6:00000067 r5:c026ca5c r4:dbcdbb98
+<4>[  724.414184] [<c05703e0>] (dump_stack+0x0/0x1c) from [<c0096914>] (warn_slowpath_common+0x54/0x6c)
+<4>[  724.424011] [<c00968c0>] (warn_slowpath_common+0x0/0x6c) from [<c00969d0>] (warn_slowpath_fmt+0x38/0x40)
+<4>[  724.434356]  r9:00000000 r8:00000003 r7:00000000 r6:c07915a4 r5:dc85903c
+<4>[  724.441589] r4:c07915a8
+<4>[  724.444488] [<c0096998>] (warn_slowpath_fmt+0x0/0x40) from [<c026ca5c>] (gpio_ensure_requested+0x50/0x114)
+<4>[  724.455047]  r3:00000003 r2:c06a1258
+<4>[  724.459014] [<c026ca0c>] (gpio_ensure_requested+0x0/0x114) from [<c026cca4>] (gpio_direction_output+0xa4/0x130)
+<4>[  724.470062] [<c026cc00>] (gpio_direction_output+0x0/0x130) from [<c0393654>] (ifx_pmu_reset+0x110/0x188)
+<4>[  724.480438] [<c0393544>] (ifx_pmu_reset+0x0/0x188) from [<c02ee594>] (ts_ldisc_close+0xf8/0x160)
+<4>[  724.490051]  r4:c079cff0
+<4>[  724.492858] [<c02ee49c>] (ts_ldisc_close+0x0/0x160) from [<c02a981c>] (tty_ldisc_close+0x48/0x60)
+<4>[  724.502532]  r9:00000001 r8:dc3b4fa8 r7:00000000 r6:dc3130a4 r5:dbd1a8e0
+<4>[  724.509765] r4:dc313000
+<4>[  724.512664] [<c02a97d4>] (tty_ldisc_close+0x0/0x60) from [<c02a9914>] (tty_ldisc_release+0x38/0x70)
+<4>[  724.522552]  r7:00000000 r6:dc313014 r5:00000000 r4:dc313000
+<4>[  724.528839] [<c02a98dc>] (tty_ldisc_release+0x0/0x70) from [<c02a498c>] (tty_release+0x408/0x57c)
+<4>[  724.538543]  r7:00000000 r6:dc375b40 r5:00000000 r4:dc313000
+<4>[  724.544830] [<c02a4584>] (tty_release+0x0/0x57c) from [<c011736c>] (fput+0x108/0x204)
+<4>[  724.553405] [<c0117264>] (fput+0x0/0x204) from [<c0114298>] (filp_close+0x60/0x80)
+<4>[  724.561706] [<c0114238>] (filp_close+0x0/0x80) from [<c0099018>] (put_files_struct+0x130/0x15c)
+<4>[  724.571228]  r7:dcaa7460 r6:dbd1a9a0 r5:01ffff7f r4:00000000
+<4>[  724.577484] [<c0098ee8>] (put_files_struct+0x0/0x15c) from [<c0099084>] (exit_files+0x40/0x44)
+<4>[  724.586914] [<c0099044>] (exit_files+0x0/0x44) from [<c009aab4>] (do_exit+0x564/0x67c)
+<4>[  724.595581]  r7:dbcdbec8 r6:dbcda000 r5:00000009 r4:dc3e0340
+<4>[  724.601837] [<c009a550>] (do_exit+0x0/0x67c) from [<c009ac1c>] (do_group_exit+0x50/0xc4)
+<4>[  724.610717] [<c009abcc>] (do_group_exit+0x0/0xc4) from [<c00a61e8>] (get_signal_to_deliver+0x2ac/0x3f8)
+<4>[  724.620971]  r7:dbcdbec8 r6:dc3d3980 r5:dbcda000 r4:00000009
+<4>[  724.627258] [<c00a5f3c>] (get_signal_to_deliver+0x0/0x3f8) from [<c004d2a4>] (do_signal+0x68/0x60c)
+<4>[  724.637145] [<c004d23c>] (do_signal+0x0/0x60c) from [<c004d888>] (do_notify_resume+0x40/0x4c)
+<4>[  724.646484] [<c004d848>] (do_notify_resume+0x0/0x4c) from [<c004a290>] (work_pending+0x1c/0x20)
+<4>[  724.656005]  r5:ae611d6c r4:40308ab4
+<4>[  724.659942] ---[ end trace 185657d588ce3dce ]---
+<6>[  727.071899] TS07.10: ts_ldisc_close - end recovery mode!!
+<4>[  727.078613] rin_close - line : 871 - rindrv_count = 1
+<4>[  727.084136] rin_close - line : 871 - rindrv_count = 2
+<4>[  727.089599] rin_close - line : 871 - rindrv_count = 3
+<4>[  727.095184] rin_close - line : 871 - rindrv_count = 4
+<4>[  728.136108] ***** unable to detect SREADY within 128, RETRY (counter=1) *****
+<4>[  729.141906] ***** unable to detect SREADY within 128, RETRY (counter=2) *****
+<4>[  730.142181] ***** unable to detect SREADY within 128, RETRY (counter=3) *****
+<6>[  731.192077] TS07.10: ts_ldisc_open executed
+<6>[  731.197174] TS07.10: mux_open start: mux_filp[1] opened again
+<6>[  731.203460] TS07.10: mux_open start: rild ch: 1
+<1>[  731.209686] Unable to handle kernel NULL pointer dereference at virtual address 000000a4
+<1>[  731.218780] pgd = c0004000
+<1>[  731.222930] [000000a4] *pgd=00000000
+<0>[  731.226745] Internal error: Oops: 17 [#1] PREEMPT SMP
+<0>[  731.226745] last sysfs file: /sys/power/state
+<4>[  731.226776] Modules linked in: fm_v4l2_drv btwilink fm_drv(C)
+<4>[  731.226837] CPU: 1    Tainted: G        WC   (2.6.35.7-cyanogenmod #5)
+<4>[  731.226898] PC is at _set_bit_le+0x10/0x28
+<4>[  731.226928] LR is at rin_tx_task+0x4c/0x104
+<4>[  731.226959] pc : [<c0254ab4>]    lr : [<c039640c>]    psr: 40000013
+<4>[  731.226959] sp : dc09ff50  ip : 0000000c  fp : dc09ff6c
+<4>[  731.226989] r10: 00000000  r9 : c69de580  r8 : f7fe02a8
+<4>[  731.227020] r7 : dbea3000  r6 : cad39730  r5 : 00000034  r4 : dbea33c0
+<4>[  731.227050] r3 : 00000020  r2 : 00000001  r1 : 000000a4  r0 : 00000005
+<4>[  731.227081] Flags: nZcv  IRQs on  FIQs on  Mode SVC_32  ISA ARM  Segment kernel
+<4>[  731.227081] Control: 10c53c7d  Table: 9bccc04a  DAC: 00000015
+<4>[  731.227111] 
+<4>[  731.227111] PC: 0xc0254a34:
+<4>[  731.227142] 4a34  e1c22803 e0211c93 e0030390 e0000092 e00c0c92 e0900803 e0a11823 e090080c
+<4>[  731.227172] 4a54  e0a1182c e1a0f00e e5c02000 e3a00000 e1a0f00e e1a0c422 e4c02001 e5c0c000
+<4>[  731.227233] 4a74  e3a00000 e1a0f00e e5802000 e3a00000 e1a0f00e e4802004 e5803000 e3a00000
+<4>[  731.227294] 4a94  e1a0f00e e3e0000d e1a0f00e e2200018 e3a02001 e2003007 e08111a0 e1a03312
+<4>[  731.227325] 4ab4  e1d12f9f e1822003 e1c10f92 e3500000 1afffffa e1a0f00e e92d41f0 e1a03002
+<4>[  731.227386] 4ad4  e3a0e010 e4d14001 e4d15001 e4d16001 e4d17001 e25ee001 e1855404 e1866405
+<4>[  731.227416] 4af4  e1877406 e4837004 1afffff5 e2423004 e3a0e040 e5b34004 e25ee001 e5935008
+<4>[  731.227478] 4b14  e5936020 e5937034 e0244005 e0244006 e0244007 e1a04fe4 e5834040 1afffff4
+<4>[  731.227508] 
+<4>[  731.227539] LR: 0xc039638c:
+<4>[  731.227539] 638c  e5807028 eaffffe2 c07693f0 c07a1648 c05a96a0 c06cffa4 c072ca40 c06cffc4
+<4>[  731.227600] 63ac  c06cff50 c06cff78 c06cff30 c06cff28 c0395760 e1a0c00d e92dd8f0 e24cb004
+<4>[  731.227630] 63cc  e5907010 e5906014 ebf5e9fa e2874d0f e597340c e5965050 e59610a4 e1550003
+<4>[  731.227691] 63ec  ca000022 e1a02005 e594001c ebfaf790 e5941004 e3a00005 e28110a4 ebfaf9a5
+<4>[  731.227722] 640c  e5943004 e1a02005 e594101c e1a00003 e593300c e1a0e00f e593f01c e59f208c
+<4>[  731.227783] 642c  e5943008 e5922000 e58321fc e594301c e0605005 e0830000 e5845024 e5840020
+<4>[  731.227813] 644c  e1a00006 eb025885 e5943008 e3a00000 e59341e0 e2841008 ebfafac6 e3500000
+<4>[  731.227874] 646c  089da8f0 e5940004 eb0274dd e89da8f0 e5941008 e59f0038 eb076817 e5973404
+<4>[  731.227935] 
+<4>[  731.227935] SP: 0xdc09fed0:
+<4>[  731.227935] fed0  c009ce94 c00884e0 0000005e c078e2d4 dc09ff14 dc09fef0 ffffffff dc09ff3c
+<4>[  731.227996] fef0  cad39730 dbea3000 dc09ff6c dc09ff08 c0049cac c00494ac 00000005 000000a4
+<4>[  731.228027] ff10  00000001 00000020 dbea33c0 00000034 cad39730 dbea3000 f7fe02a8 c69de580
+<4>[  731.228088] ff30  00000000 dc09ff6c 0000000c dc09ff50 c039640c c0254ab4 40000013 ffffffff
+<4>[  731.228118] ff50  f7fe02a0 f7fe02a0 dc09e000 c03963c0 dc09ffbc dc09ff70 c00a9a7c c03963cc
+<4>[  731.228179] ff70  00000013 f7fe02b0 c00ade74 00000000 dcb289c0 c00ae29c dc09ff88 dc09ff88
+<4>[  731.228240] ff90  c0088f84 dc841eb8 dc09ffc4 c00a9944 f7fe02a0 00000000 00000000 00000000
+<4>[  731.228271] ffb0  dc09fff4 dc09ffc0 c00ade90 c00a9950 00000000 00000000 00000000 00000000
+<4>[  731.228332] 
+<4>[  731.228332] FP: 0xdc09feec:
+<4>[  731.228332] feec  dc09ff3c cad39730 dbea3000 dc09ff6c dc09ff08 c0049cac c00494ac 00000005
+<4>[  731.228393] ff0c  000000a4 00000001 00000020 dbea33c0 00000034 cad39730 dbea3000 f7fe02a8
+<4>[  731.228424] ff2c  c69de580 00000000 dc09ff6c 0000000c dc09ff50 c039640c c0254ab4 40000013
+<4>[  731.228485] ff4c  ffffffff f7fe02a0 f7fe02a0 dc09e000 c03963c0 dc09ffbc dc09ff70 c00a9a7c
+<4>[  731.228515] ff6c  c03963cc 00000013 f7fe02b0 c00ade74 00000000 dcb289c0 c00ae29c dc09ff88
+<4>[  731.228576] ff8c  dc09ff88 c0088f84 dc841eb8 dc09ffc4 c00a9944 f7fe02a0 00000000 00000000
+<4>[  731.228637] ffac  00000000 dc09fff4 dc09ffc0 c00ade90 c00a9950 00000000 00000000 00000000
+<4>[  731.228668] ffcc  00000000 dc09ffd0 dc09ffd0 dc841eb8 c00ade08 c009a550 00000013 00000000
+<4>[  731.228729] 
+<4>[  731.228729] R4: 0xdbea3340:
+<4>[  731.228729] 3340  00000000 00000000 00000000 dbea334c dbea334c 00000000 00000000 00000000
+<4>[  731.228790] 3360  00000000 dbea3364 dbea3364 dc8db9f8 dbea5b70 dc85fb70 00000001 c076fefc
+<4>[  731.228820] 3380  dbea3388 00000000 c076ff38 00000000 00000000 00000000 00000000 00000000
+<4>[  731.228881] 33a0  00010000 dbea33a4 dbea33a4 00000000 00000000 00000000 00000000 00000000
+<4>[  731.228942] 33c0  00005305 00000000 dbea3000 00000000 00000000 dbeb1000 00000000 dbeb0000
+<4>[  731.228973] 33e0  dbeb0047 00000000 000004f1 00000425 001450b6 0001d8d1 00000000 00000000
+<4>[  731.229034] 3400  00000000 00000000 00000000 000005dc 00000bb8 00000001 00000000 00000000
+<4>[  731.229064] 3420  000000c4 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+<4>[  731.229125] 
+<4>[  731.229125] R6: 0xcad396b0:
+<4>[  731.229125] 96b0  5f860938 5f860939 00001960 00008211 5f860939 00000000 00000000 00000000
+<4>[  731.229187] 96d0  00000000 00000000 00000000 00000000 00000000 0000081e 00000000 00000000
+<4>[  731.229217] 96f0  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+<4>[  731.229278] 9710  00000000 00000000 ccc818d0 ccc818e0 ccc81800 ccc818d0 00000190 00000001
+<4>[  731.229309] 9730  00000000 00000000 00000000 00000000 00000000 dbea3000 00000034 00000000
+<4>[  731.229370] 9750  00000000 00000000 00000000 00000000 5f860938 5f860939 00001960 00008011
+<4>[  731.229400] 9770  5f860939 00000000 00000000 00000000 00000034 00000000 00d00000 001000b0
+<4>[  731.229461] 9790  00000000 00081002 00000000 cadc5d98 00000000 00000000 00000000 3ac8b02e
+<4>[  731.229492] 
+<4>[  731.229522] R7: 0xdbea2f80:
+<4>[  731.229522] 2f80  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+<4>[  731.229583] 2fa0  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+<4>[  731.229614] 2fc0  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+<4>[  731.229675] 2fe0  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+<4>[  731.229705] 3000  656e7376 00003074 00000000 00000000 00000000 00000000 dc83a80c 00000000
+<4>[  731.229766] 3020  00000000 00000000 00000000 00000000 00000000 00000003 dbea5838 dc85f838
+<4>[  731.229797] 3040  dbea3040 dbea3040 dbea3048 dbea3048 00000000 00000005 00000005 00000000
+<4>[  731.229858] 3060  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+<4>[  731.229888] 
+<4>[  731.229888] R8: 0xf7fe0228:
+<4>[  731.229919] 0228  f7fe0228 f7fe0228 00000000 00000000 dcb53f88 dcb53f88 00000000 dcb055e0
+<4>[  731.229949] 0248  dca58d00 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+<4>[  731.230010] 0268  f7fe0268 f7fe0268 00000000 00000000 dc09bf88 dc09bf88 00000000 dcb0a960
+<4>[  731.230041] 0288  dcb28000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+<4>[  731.230102] 02a8  f7fe02a8 f7fe02a8 00000000 00000000 f7fe02b8 f7fe02b8 c69de580 dcb0aea0
+<4>[  731.230133] 02c8  dcb289c0 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+<4>[  731.230194] 02e8  f7fe02e8 f7fe02e8 00000000 00000000 dc0a1f88 dc0a1f88 00000000 dcb0aec0
+<4>[  731.230224] 0308  dca596c0 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+<4>[  731.230285] 
+<4>[  731.230285] R9: 0xc69de500:
+<4>[  731.230316] e500  dc96fc10 00100100 00200200 00000000 00000000 00000000 00000000 00000000
+<4>[  731.230346] e520  c69de5e0 00200200 00100100 00200200 dbc05120 00000000 00000003 00000000
+<4>[  731.230407] e540  c69de7c0 0000013c ce67e7e0 00000005 00000000 c69de9e0 00000000 00000000
+<4>[  731.230438] e560  d7a6d4e0 00000141 c69de360 00000006 00000000 00000000 00000003 00000000
+<4>[  731.230499] e580  00000068 00000001 c69def60 00010068 00000002 c69de240 00000000 dbf61000
+<4>[  731.230529] e5a0  00000000 00200200 00000006 001e8ce8 00000000 00000000 00000000 00000000
+<4>[  731.230590] e5c0  c69de520 00200200 00100100 00200200 dbc05120 00000000 00000003 00000000
+<4>[  731.230621] e5e0  c69deb40 00200200 00100100 00200200 dbc05120 00000000 00000003 00000000
+<0>[  731.230682] Process rintx (pid: 78, stack limit = 0xdc09e2f8)
+<0>[  731.230712] Stack: (0xdc09ff50 to 0xdc0a0000)
+<0>[  731.230743] ff40:                                     f7fe02a0 f7fe02a0 dc09e000 c03963c0
+<0>[  731.230773] ff60: dc09ffbc dc09ff70 c00a9a7c c03963cc 00000013 f7fe02b0 c00ade74 00000000
+<0>[  731.230834] ff80: dcb289c0 c00ae29c dc09ff88 dc09ff88 c0088f84 dc841eb8 dc09ffc4 c00a9944
+<0>[  731.230865] ffa0: f7fe02a0 00000000 00000000 00000000 dc09fff4 dc09ffc0 c00ade90 c00a9950
+<0>[  731.230895] ffc0: 00000000 00000000 00000000 00000000 dc09ffd0 dc09ffd0 dc841eb8 c00ade08
+<0>[  731.230926] ffe0: c009a550 00000013 00000000 dc09fff8 c009a550 c00ade14 ff666666 ff666666
+<4>[  731.230957] Backtrace: 
+<4>[  731.231018] [<c03963c0>] (rin_tx_task+0x0/0x104) from [<c00a9a7c>] (worker_thread+0x138/0x204)
+<4>[  731.231048]  r7:c03963c0 r6:dc09e000 r5:f7fe02a0 r4:f7fe02a0
+<4>[  731.231109] [<c00a9944>] (worker_thread+0x0/0x204) from [<c00ade90>] (kthread+0x88/0x90)
+<4>[  731.231170] [<c00ade08>] (kthread+0x0/0x90) from [<c009a550>] (do_exit+0x0/0x67c)
+<4>[  731.231170]  r7:00000013 r6:c009a550 r5:c00ade08 r4:dc841eb8
+<0>[  731.231231] Code: e3a02001 e2003007 e08111a0 e1a03312 (e1d12f9f) 
+<4>[  732.109405] 
+<4>[  732.109405] TS0710:ts_ldisc_rx:bad_data,d
+<4>[  732.109436] 
+<4>[  732.109436] TS0710:ts_ldisc_rx:bad_data,a
+<4>[  732.109436] 
+<4>[  732.109436] TS0710:ts_ldisc_rx:bad_data,4f
+<4>[  732.109436] 
+<4>[  732.109436] TS0710:ts_ldisc_rx:bad_data,4b
+<4>[  732.109466] 
+<4>[  732.109466] TS0710:ts_ldisc_rx:bad_data,d
+<4>[  732.109466] 
+<4>[  732.109466] TS0710:ts_ldisc_rx:bad_data,a

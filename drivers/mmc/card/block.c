@@ -43,11 +43,17 @@
 #include "queue.h"
 
 MODULE_ALIAS("mmc:block");
-
+#ifndef CONFIG_MACH_LGE_COSMO_DOMASTIC 
 /*
  * max 16 partitions per card
  */
 #define MMC_SHIFT	4
+#else
+/*
+ * max 32 partitions per card
+ */
+#define MMC_SHIFT	5 
+#endif
 #define MMC_NUM_MINORS	(256 >> MMC_SHIFT)
 
 static DECLARE_BITMAP(dev_use, MMC_NUM_MINORS);
@@ -226,6 +232,17 @@ static u32 get_card_status(struct mmc_card *card, struct request *req)
 	struct mmc_command cmd;
 	int err;
 
+	// hyoungsuk.jang@lge.com 20110222 Freezing on SD removal [START]
+	if (mmc_card_sd(card))	// make sure external SD not intnernal eMMC
+	{
+		extern int omap_hsmmc_get_detect_pin_state(struct mmc_host *host);
+		if (omap_hsmmc_get_detect_pin_state(card->host) == 0) {
+			printk(KERN_WARNING "[microSD] SD is not present. consider SD card status as 0 \n");
+			return 0;
+		}					
+	}
+	// hyoungsuk.jang@lge.com 20110222 Freezing on SD removal [END]
+
 	memset(&cmd, 0, sizeof(struct mmc_command));
 	cmd.opcode = MMC_SEND_STATUS;
 	if (!mmc_host_is_spi(card->host))
@@ -263,6 +280,9 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 	struct mmc_card *card = md->queue.card;
 	struct mmc_blk_request brq;
 	int ret = 1, disable_multi = 0;
+	//#ifdef CONFIG_MACH_LGE_COSMO_DOMASTIC
+	int l_err_count = 1;
+	//#endif
 
 #ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
 	if (mmc_bus_needs_resume(card->host)) {
@@ -370,6 +390,21 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 				printk(KERN_WARNING "%s: retrying using single "
 				       "block read\n", req->rq_disk->disk_name);
 				disable_multi = 1;
+				//#ifdef CONFIG_MACH_LGE_COSMO_DOMASTIC
+				if ((brq.data.error == -EILSEQ) &&(mmc_card_sd(card)))
+				{
+					if (l_err_count < 3)
+					{
+						printk(KERN_WARNING "\n----------->  reconfigure sdcard speed to down step = %d\n",l_err_count);
+						mmc_sd_speed_cntrol(card->host,l_err_count);
+						l_err_count++;
+					}
+					else 
+					{
+						printk(KERN_WARNING "\n----------->  OOPS ! there is no more down speed step\n");
+					}
+				}
+				//#endif
 				continue;
 			}
 			status = get_card_status(card, req);
@@ -406,6 +441,18 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 			do {
 				int err;
 
+
+// hyoungsuk.jang@lge.com 20110119 Freezing on SD removal [START]
+				if (mmc_card_sd(card))	// make sure external SD not intnernal eMMC
+				{
+					extern int omap_hsmmc_get_detect_pin_state(struct mmc_host *host);
+					if (omap_hsmmc_get_detect_pin_state(card->host) == 0) {
+						printk(KERN_WARNING "[microSD] SD is not present. goto cmd_err 1 \n");
+						goto cmd_err;
+					}					
+				}
+// hyoungsuk.jang@lge.com 20110119 Freezing on SD removal [END]
+
 				cmd.opcode = MMC_SEND_STATUS;
 				cmd.arg = card->rca << 16;
 				cmd.flags = MMC_RSP_R1 | MMC_CMD_AC;
@@ -432,6 +479,12 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 #endif
 		}
 
+		// hyoungsuk.jang@lge.com 20110211 SD insertion lock up patch from STAR [START]
+		if (brq.cmd.error == -ENOMEDIUM) {
+			goto cmd_err;
+		}
+		// hyoungsuk.jang@lge.com 20110211 SD insertion lock up patch from STAR [END]		
+
 		if (brq.cmd.error || brq.stop.error || brq.data.error) {
 			if (rq_data_dir(req) == READ) {
 				/*
@@ -442,6 +495,9 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 				spin_lock_irq(&md->lock);
 				ret = __blk_end_request(req, -EIO, brq.data.blksz);
 				spin_unlock_irq(&md->lock);
+				// #ifdef CONFIG_MACH_LGE_COSMO_DOMASTIC
+				continue;
+				// #endif
 			}
 			goto cmd_err;
 		}
@@ -470,7 +526,19 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 	if (mmc_card_sd(card)) {
 		u32 blocks;
 
+// hyoungsuk.jang@lge.com 20110119 Freezing on SD removal [START]
+#if 0
 		blocks = mmc_sd_num_wr_blocks(card);
+#else
+		extern int omap_hsmmc_get_detect_pin_state(struct mmc_host *host);
+		if (omap_hsmmc_get_detect_pin_state(card->host) == 0) {
+			printk(KERN_WARNING "[microSD] SD is not present. here is cmd_err 2 \n");
+			blocks = -1;
+		} else {
+			blocks = mmc_sd_num_wr_blocks(card);		
+		}
+#endif
+// hyoungsuk.jang@lge.com 20110119 Freezing on SD removal [END]
 		if (blocks != (u32)-1) {
 			spin_lock_irq(&md->lock);
 			ret = __blk_end_request(req, 0, blocks << 9);
@@ -617,7 +685,17 @@ static int mmc_blk_probe(struct mmc_card *card)
 #ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
 	mmc_set_bus_resume_policy(card->host, 1);
 #endif
+
+#ifdef CONFIG_MACH_LGE_MMC_REFRESH	  //FW KIMBYUNGCHUL 20110516 [START]
+	if(add_disk(md->disk) == 0xbcbc)
+	{
+		err = 0xbcbc;
+		goto out;
+	}
+#else
 	add_disk(md->disk);
+#endif								  //FW KIMBYUNGCHUL 20110516 [END]
+
 	return 0;
 
  out:

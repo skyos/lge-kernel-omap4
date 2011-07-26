@@ -73,6 +73,13 @@ int wake_lock_active(struct wake_lock *lock);
  */
 long has_wake_lock(int type);
 
+void abnormal_wake_unlock_call(int value);
+void get_abnormal_wake_unlock_call(void);
+
+int kill_abnormal_active_locks(int type);
+long find_abnormal_wake_lock(int type);
+
+
 #else
 
 static inline void wake_lock_init(struct wake_lock *lock, int type,
@@ -84,6 +91,11 @@ static inline void wake_unlock(struct wake_lock *lock) {}
 
 static inline int wake_lock_active(struct wake_lock *lock) { return 0; }
 static inline long has_wake_lock(int type) { return 0; }
+void abnormal_wake_unlock_call(int value) { return 0; }
+void get_abnormal_wake_unlock_call(void) { return 0; }
+
+int kill_abnormal_active_locks(int type) { return 0; }
+static inline long find_abnormal_wake_lock(int type) { return 0; }
 
 #endif
 

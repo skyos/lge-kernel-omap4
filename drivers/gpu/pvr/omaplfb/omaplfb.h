@@ -71,6 +71,17 @@ typedef struct PVRPDP_SWAPCHAIN_TAG
 	OMAP_BOOL                       bBlanked;
 	spinlock_t*                     psSwapChainLock;
 	void*                           pvDevInfo;
+	struct {
+		struct mutex	lock;
+		u32				pAddr;				//physical address
+		unsigned long	pStride;			//physical st
+		void 			*vAddr;				//virtual address
+		unsigned long	vStride;			//virtual stride
+		size_t			pSize;				//alloc size in physical
+		bool			alloc;				//is allocated?
+		struct omap_overlay	*overlay;	//hdmi overlay
+	} stHdmiTiler;
+	enum omap_dss_overlay_s3d_type	s3d_type;
 
 } OMAPLFB_SWAPCHAIN;
 
@@ -107,6 +118,8 @@ typedef struct OMAPLFB_DEVINFO_TAG
 	DISPLAY_DIMS                    sDisplayDim;
 	struct workqueue_struct*        sync_display_wq;
 	struct work_struct	        sync_display_work;
+	struct kobject			kobj;
+	OMAP_BOOL			ignore_sync;
 
 }  OMAPLFB_DEVINFO;
 
@@ -123,6 +136,12 @@ typedef enum _OMAP_ERROR_
 	OMAP_ERROR_DEVICE_REGISTER_FAILED   =  8
 
 } OMAP_ERROR;
+
+struct omaplfb_device {
+	struct device *dev;
+	OMAPLFB_DEVINFO *display_info_list;
+	int display_count;
+};
 
 #define	OMAPLFB_PAGE_SIZE 4096
 #define	OMAPLFB_PAGE_MASK (OMAPLFB_PAGE_SIZE - 1)
@@ -149,7 +168,7 @@ typedef enum _OMAP_ERROR_
 #define	ERROR_PRINTK(format, ...) printk("ERROR " DRIVER_PREFIX \
 	" (%s %i): " format "\n", __func__, __LINE__, ## __VA_ARGS__)
 
-OMAP_ERROR OMAPLFBInit(void);
+OMAP_ERROR OMAPLFBInit(struct omaplfb_device *omaplfb_dev);
 OMAP_ERROR OMAPLFBDeinit(void);
 void *OMAPLFBAllocKernelMem(unsigned long ulSize);
 void OMAPLFBFreeKernelMem(void *pvMem);
@@ -158,6 +177,8 @@ void OMAPLFBPresentSync(OMAPLFB_DEVINFO *psDevInfo,
 OMAP_ERROR OMAPLFBGetLibFuncAddr(char *szFunctionName,
 	PFN_DC_GET_PVRJTABLE *ppfnFuncTable);
 void OMAPLFBFlip(OMAPLFB_SWAPCHAIN *psSwapChain, unsigned long aPhyAddr);
+void omaplfb_create_sysfs(struct omaplfb_device *odev);
+void omaplfb_remove_sysfs(struct omaplfb_device *odev);
 #ifdef LDM_PLATFORM
 void OMAPLFBDriverSuspend(void);
 void OMAPLFBDriverResume(void);

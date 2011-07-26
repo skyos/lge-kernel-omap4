@@ -225,27 +225,6 @@ static struct omapfb_colormode omapfb_colormodes[] = {
 		.bits_per_pixel = 16,
 		.nonstd = OMAPFB_COLOR_YUY422,
 	}, {
-		.dssmode = OMAP_DSS_COLOR_CLUT2,
-		.bits_per_pixel = 2,
-		.red    = { .length = 8, .offset = 0, .msb_right = 0 },
-		.green  = { .length = 8, .offset = 1, .msb_right = 0 },
-		.blue   = { .length = 8, .offset = 0, .msb_right = 0 },
-		.transp = { .length = 0, .offset = 0, .msb_right = 0 },
-	}, {
-		.dssmode = OMAP_DSS_COLOR_CLUT4,
-		.bits_per_pixel = 4,
-		.red    = { .length = 8, .offset = 2, .msb_right = 0 },
-		.green  = { .length = 8, .offset = 1, .msb_right = 0 },
-		.blue   = { .length = 0, .offset = 0, .msb_right = 0 },
-		.transp = { .length = 0, .offset = 0, .msb_right = 0 },
-	}, {
-		.dssmode = OMAP_DSS_COLOR_CLUT8,
-		.bits_per_pixel = 8,
-		.red    = { .length = 8, .offset = 4, .msb_right = 0 },
-		.green  = { .length = 8, .offset = 2, .msb_right = 0 },
-		.blue   = { .length = 8, .offset = 0, .msb_right = 0 },
-		.transp = { .length = 0, .offset = 6, .msb_right = 0 },
-	}, {
 		.dssmode = OMAP_DSS_COLOR_ARGB16,
 		.bits_per_pixel = 16,
 		.red	= { .length = 4, .offset = 8, .msb_right = 0 },
@@ -740,9 +719,13 @@ int check_fb_var(struct fb_info *fbi, struct fb_var_screeninfo *var)
 			var->xres, var->yres,
 			var->xres_virtual, var->yres_virtual);
 
-	if (display->driver->get_dimension)
+	if(display == NULL) {
+		return -EINVAL;
+	}
+
+	if (display && display->driver->get_dimension) {
 		display->driver->get_dimension(display, &var->width, &var->height);
-	else {
+	} else {
 		var->height = -1;
 		var->width = -1;
 	}
@@ -965,11 +948,7 @@ int omapfb_setup_overlay(struct fb_info *fbi, struct omap_overlay *ovl,
 			break;
 		}
 	default:
-		if (var->bits_per_pixel >> 3)
-			screen_width = fix->line_length
-					/ (var->bits_per_pixel >> 3);
-		else
-			screen_width = fix->line_length;
+		screen_width = fix->line_length / (var->bits_per_pixel >> 3);
 		break;
 	}
 
@@ -1406,7 +1385,19 @@ static int omapfb_blank(int blank, struct fb_info *fbi)
 	case FB_BLANK_POWERDOWN:
 		if (display->state != OMAP_DSS_DISPLAY_ACTIVE)
 			goto exit;
+/* block temp code
+#if defined(CONFIG_MACH_LGE_COSMOPOLITAN)
+		struct fb_fillrect rc;
+		rc.dx = 0;
+		rc.dy = 0;
+		rc.width = fbi->var.xres;
+		rc.height = fbi->var.yres;
+		rc.color = 0x00000000;
+		rc.rop = ROP_COPY;
 
+		cfb_fillrect(fbi,&rc);
+#endif
+*/
 		if (display->driver->suspend)
 			r = display->driver->suspend(display);
 
@@ -1587,7 +1578,7 @@ static int omapfb_alloc_fbmem(struct fb_info *fbi, unsigned long size,
 #ifdef CONFIG_TILER_OMAP
 		unsigned long pstride;
 		size_t psize;
-		pstride = tiler_stride(tiler_get_natural_addr((void *)paddr));
+		pstride = tiler_stride(tiler_get_natural_addr((void *)&paddr));
 		psize = h * pstride;
 		vaddr = __arm_multi_strided_ioremap(1, &paddr, &psize,
 			&pstride, (unsigned long *) &fbi->fix.line_length,
@@ -1623,7 +1614,6 @@ static int omapfb_alloc_fbmem_display(struct fb_info *fbi, unsigned long size,
 	struct omapfb2_device *fbdev = ofbi->fbdev;
 	struct omap_dss_device *display;
 	int bytespp;
-	u16 w, h;
 
 	display =  fb2display(fbi);
 
@@ -1652,24 +1642,28 @@ static int omapfb_alloc_fbmem_display(struct fb_info *fbi, unsigned long size,
 			bytespp = fbi->var.bits_per_pixel >> 3;
 		}
 	}
+	if (!size) {
+		u16 w, h;
 
-	display->driver->get_resolution(display, &w, &h);
+		display->driver->get_resolution(display, &w, &h);
 
-	if (!size && ofbi->rotation_type == OMAP_DSS_ROT_VRFB) {
-		size = max(omap_vrfb_min_phys_size(w, h, bytespp),
-				omap_vrfb_min_phys_size(h, w, bytespp));
+		if (ofbi->rotation_type == OMAP_DSS_ROT_VRFB) {
+			size = max(omap_vrfb_min_phys_size(w, h, bytespp),
+					omap_vrfb_min_phys_size(h, w, bytespp));
 
-		DBG("adjusting fb mem size for VRFB, %u -> %lu\n",
-				w * h * bytespp, size);
-	} else if (ofbi->rotation_type == OMAP_DSS_ROT_TILER) {
-		/* round up width to tiler size */
-		w = ALIGN(w, PAGE_SIZE / bytespp);
-		fbi->fix.line_length = w * bytespp;
-		size = w * h * bytespp;
+			DBG("adjusting fb mem size for VRFB, %u -> %lu\n",
+					w * h * bytespp, size);
+		} else if (ofbi->rotation_type == OMAP_DSS_ROT_TILER) {
+			/* round up width to tiler size */
+			w = ALIGN(w, PAGE_SIZE / bytespp);
+			fbi->fix.line_length = w * bytespp;
+		}
+			size = w * h * bytespp;
+
 	}
 
 	if (!size)
-		size = w * h * bytespp;
+		return 0;
 
 	return omapfb_alloc_fbmem(fbi, size, paddr);
 }
@@ -1859,11 +1853,7 @@ int omapfb_realloc_fbmem(struct fb_info *fbi, unsigned long size, int type)
 	unsigned int w, h, bytespp;
 	w = var->xres;
 	h = var->yres;
-
-	if (var->bits_per_pixel >> 0x3)
-		bytespp = var->bits_per_pixel >> 0x3;
-	else
-		bytespp = 1;
+	bytespp = var->bits_per_pixel >> 0x3;
 
 	if (type > OMAPFB_MEMTYPE_MAX)
 		return -EINVAL;
@@ -2150,13 +2140,14 @@ static int omapfb_notifier(struct notifier_block *nb,
 			container_of(nb, struct omapfb_notifier_block, notifier);
 	struct omap_dss_device *dssdev = arg;
 	struct omapfb2_device *fbdev = notifier->fbdev;
-	int i, j, r, res = NOTIFY_DONE;
+	int i, r, res = NOTIFY_DONE;
 
 	/* notify fbs (with overlays) on this device */
 	for (i = 0; i < fbdev->num_fbs; i++) {
 		struct fb_info *fbi = fbdev->fbs[i];
+#if 0
+		int j;
 		struct omapfb_info *ofbi = FB2OFB(fbi);
-
 		/* keep the largest status if multiple fbs are affected */
 
 		for (j = 0; j < ofbi->num_overlays; j++) {
@@ -2166,6 +2157,12 @@ static int omapfb_notifier(struct notifier_block *nb,
 				break;
 			}
 		}
+#else
+                if(fbdev->displays[i]==dssdev){                        
+			r = omapfb_notify_fb(fbi, evt, dssdev);                        
+			res = max(res, r);
+		}
+#endif
 
 	}
 

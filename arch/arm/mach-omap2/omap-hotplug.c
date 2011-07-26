@@ -32,7 +32,9 @@ int platform_cpu_kill(unsigned int cpu)
 	int ret;
 
 	ret = wait_for_completion_timeout(&cpu_killed, 5000);
+	#if 0		
 	pr_notice("CPU%u: shutdown\n", cpu);
+	#endif
 
 	return ret;
 }

@@ -36,19 +36,9 @@
 #include <plat/omap_hwmod.h>
 #include <plat/omap-pm.h>
 
-#define CONTROL_DEV_CONF                0x300
-#define PHY_PD				(1 << 0)
-
-#ifdef CONFIG_ARCH_OMAP4
-#define DIE_ID_REG_BASE         (L4_44XX_PHYS + 0x2000)
-#define DIE_ID_REG_OFFSET               0x200
-#else
-#define DIE_ID_REG_BASE         (L4_WK_34XX_PHYS + 0xA000)
-#define DIE_ID_REG_OFFSET               0x218
-#endif /* CONFIG_ARCH_OMAP4 */
-
 #ifdef CONFIG_USB_MUSB_SOC
 
+//#define CONFIG_LGE_USB_RNDIS_FIST
 static const char name[] = "musb_hdrc";
 #define MAX_OMAP_MUSB_HWMOD_NAME_LEN	16
 
@@ -61,9 +51,35 @@ static struct musb_hdrc_config musb_config = {
 	.ram_bits	= 12,
 };
 
+#define CONTROL_DEV_CONF		0x300
+#	define PHY_PD			(1 << 0)
+
 #ifdef CONFIG_ANDROID
+
+#ifdef CONFIG_ARCH_OMAP4
+#define DIE_ID_REG_BASE		(L4_44XX_PHYS + 0x2000)
+#define DIE_ID_REG_OFFSET		0x200
+#else
+#define DIE_ID_REG_BASE		(L4_WK_34XX_PHYS + 0xA000)
+#define DIE_ID_REG_OFFSET		0x218
+#endif /* CONFIG_ARCH_OMAP4 */
+
 #define MAX_USB_SERIAL_NUM		17
+#if  defined ( CONFIG_LGE_ANDRIOD_USB)
+#define LGE_USB_VENDOR_ID  		0x1004
+#define LGE_USB_PRODUCT_ID 		0x618E
+#define LGE_USB_FACTORY_PRODUCT_ID	0x6000
+#define LGE_USB_RNDIS_ADB_PRODUCT_ID	0x61D9
+#define LGE_USB_RNDIS_MDM_DIAG_GPS_UMS_ADB_PRODUCT_ID	0x61D7
+
+#define LGE_USB_VENDOR_NAME	"LG Electronics. Inc"
+#define LGE_COSMO_USB_DEVICE_NAME "Cosmo"
+#elif defined (CONFIG_LGE_USB_4_LINUX_HOST)  // for LINUX PC
+#define LGE_USB_VENDOR_ID  		0x0bb4
+#define LGE_USB_PRODUCT_ID 		0x0c03
+#else // #if  defined ( CONFIG_LGE_ANDRIOD_USB)
 #define OMAP_VENDOR_ID			0x0451
+#endif // CONFIG_LGE_ANDRIOD_USB
 #define OMAP_UMS_PRODUCT_ID		0xD100
 #define OMAP_ADB_PRODUCT_ID		0xD101
 #define OMAP_UMS_ADB_PRODUCT_ID		0xD102
@@ -112,22 +128,100 @@ static char *usb_functions_acm_ums_adb[] = {
 	"adb",
 };
 
+#if  defined ( CONFIG_LGE_ANDRIOD_USB)
+static char *usb_functions_lge_acm_diag_nmea_ums_adb[] = {
+	"acm",
+	"gser",	
+	"nmea",
+	"usb_mass_storage",
+	"adb",
+};
+
+static char *usb_functions_lge_rndis_acm_diag_nmea_ums_adb[] = {
+	"rndis",
+	"acm",
+	"gser",	
+	"nmea",
+	"usb_mass_storage",
+	"adb",
+};
+
+
+static char *usb_functions_lge_acm_diag[] = {
+	"acm",
+	"gser",	
+};
+
+static char *usb_functions_lge_rndis_adb[] = {
+	"rndis",
+	"adb",	
+};
+
+#endif // #if  defined ( CONFIG_LGE_ANDRIOD_USB)
+
 static char *usb_functions_all[] = {
+
+#if  defined ( CONFIG_LGE_ANDRIOD_USB)
+#ifdef CONFIG_USB_ANDROID_ACM
+	"acm",
+#endif
+#ifdef CONFIG_LGE_ANDROID_USB_DIAG
+	"gser",
+#endif 
+#ifdef CONFIG_LGE_ANDROID_USB_NMEA
+	"nmea",
+#endif 	
 #ifdef CONFIG_USB_ANDROID_MASS_STORAGE
 	"usb_mass_storage",
 #endif
 #ifdef CONFIG_USB_ANDROID_ADB
 	"adb",
 #endif
+#else // #if  defined ( CONFIG_LGE_ANDRIOD_USB)
 #ifdef CONFIG_USB_ANDROID_RNDIS
 	"rndis",
 #endif
 #ifdef CONFIG_USB_ANDROID_ACM
 	"acm",
 #endif
+#ifdef CONFIG_USB_ANDROID_MASS_STORAGE
+	"usb_mass_storage",
+#endif
+#ifdef CONFIG_USB_ANDROID_ADB
+	"adb",
+#endif
+#endif // #if  defined ( CONFIG_LGE_ANDRIOD_USB)
 };
 
 static struct android_usb_product usb_products[] = {
+#if  defined ( CONFIG_LGE_ANDRIOD_USB)
+
+
+#ifdef CONFIG_LGE_USB_RNDIS_FIST
+{
+	.product_id 	= LGE_USB_PRODUCT_ID, // LGE_USB_RNDIS_MDM_DIAG_GPS_UMS_ADB_PRODUCT_ID,
+	.num_functions	= ARRAY_SIZE(usb_functions_lge_rndis_acm_diag_nmea_ums_adb),
+	.functions		= usb_functions_lge_rndis_acm_diag_nmea_ums_adb,
+},
+#else
+{
+		.product_id     = LGE_USB_PRODUCT_ID,
+		.num_functions  = ARRAY_SIZE(usb_functions_lge_acm_diag_nmea_ums_adb),
+		.functions      = usb_functions_lge_acm_diag_nmea_ums_adb,
+	},
+#endif 
+
+	{
+		.product_id     = LGE_USB_FACTORY_PRODUCT_ID,
+		.num_functions  = ARRAY_SIZE(usb_functions_lge_acm_diag),
+		.functions      = usb_functions_lge_acm_diag,
+	},
+	{
+		.product_id     = LGE_USB_RNDIS_ADB_PRODUCT_ID,
+		.num_functions  = ARRAY_SIZE(usb_functions_lge_rndis_adb),
+		.functions      = usb_functions_lge_rndis_adb,
+	},
+#endif // #if  defined ( CONFIG_LGE_ANDRIOD_USB)
 	{
 		.product_id     = OMAP_UMS_PRODUCT_ID,
 		.num_functions  = ARRAY_SIZE(usb_functions_ums),
@@ -172,15 +266,31 @@ static struct android_usb_product usb_products[] = {
 
 /* standard android USB platform data */
 static struct android_usb_platform_data andusb_plat = {
+#if  defined ( CONFIG_LGE_ANDRIOD_USB)
+	.vendor_id		= LGE_USB_VENDOR_ID, // OMAP_VENDOR_ID,
+#ifdef 	CONFIG_LGE_USB_RNDIS_FIST
+	.product_id		= LGE_USB_PRODUCT_ID, //LGE_USB_RNDIS_MDM_DIAG_GPS_UMS_ADB_PRODUCT_ID, //LGE_USB_RNDIS_ADB_PRODUCT_ID, // , //OMAP_PRODUCT_ID,
+#else
+	.product_id 	= LGE_USB_PRODUCT_ID, //
+#endif // 1	
+	.manufacturer_name	= LGE_USB_VENDOR_NAME, // "Texas Instruments Inc.",
+	.product_name           = LGE_COSMO_USB_DEVICE_NAME, //"Cosmo USB Device", // hunsoo.lee "OMAP4",
+#else // #if  defined ( CONFIG_LGE_ANDRIOD_USB)
 	.vendor_id		= OMAP_VENDOR_ID,
 	.product_id		= OMAP_UMS_PRODUCT_ID,
 	.manufacturer_name	= "Texas Instruments Inc.",
 	.product_name		= "OMAP-3/4",
+#endif // #if  defined ( CONFIG_LGE_ANDRIOD_USB)
 	.serial_number		= device_serial,
 	.num_products		= ARRAY_SIZE(usb_products),
 	.products		= usb_products,
-	.num_functions		= ARRAY_SIZE(usb_functions_all),
-	.functions		= usb_functions_all,
+#ifdef CONFIG_LGE_USB_RNDIS_FIST
+	.num_functions		= ARRAY_SIZE(usb_functions_lge_rndis_acm_diag_nmea_ums_adb),// hunsoo.lee test 
+	.functions		= usb_functions_lge_rndis_acm_diag_nmea_ums_adb, // 
+#else
+	.num_functions		= ARRAY_SIZE(usb_functions_all),// ARRAY_SIZE(usb_functions_lge_rndis_acm_diag_nmea_ums_adb),// hunsoo.lee test 
+	.functions		= usb_functions_all, //usb_functions_lge_rndis_acm_diag_nmea_ums_adb, // 
+#endif
 };
 
 static struct platform_device androidusb_device = {
@@ -193,10 +303,17 @@ static struct platform_device androidusb_device = {
 
 #ifdef CONFIG_USB_ANDROID_MASS_STORAGE
 static struct usb_mass_storage_platform_data usbms_plat = {
+#if  defined ( CONFIG_LGE_ANDRIOD_USB)
+	.vendor		= "LGE", // hunsoo.lee "Texas Instruments Inc.",
+	.product	= "Cosmo", // "OMAP4",
+	.release	= 1,
+	.nluns		= 2, // hunsoo.lee 1,
+#else
 	.vendor		= "Texas Instruments Inc.",
 	.product	= "OMAP4",
 	.release	= 1,
 	.nluns		= 1,
+#endif // #if  defined ( CONFIG_LGE_ANDRIOD_USB)
 };
 
 static struct platform_device usb_mass_storage_device = {
@@ -211,8 +328,13 @@ static struct platform_device usb_mass_storage_device = {
 #ifdef CONFIG_USB_ANDROID_RNDIS
 static struct usb_ether_platform_data rndis_pdata = {
 	/* ethaddr is filled by board_serialno_setup */
+#if defined (CONFIG_LGE_ANDRIOD_USB)	
+	.vendorID	= LGE_USB_VENDOR_ID,
+	.vendorDescr	= LGE_COSMO_USB_DEVICE_NAME, //  "Texas Instruments Inc.",
+#else // #if defined (CONFIG_LGE_ANDRIOD_USB)	
 	.vendorID	= OMAP_VENDOR_ID,
 	.vendorDescr	= "Texas Instruments Inc.",
+#endif // #if defined (CONFIG_LGE_ANDRIOD_USB)		
 	};
 
 static struct platform_device rndis_device = {
@@ -246,8 +368,12 @@ static void usb_gadget_init(void)
 		val[3] = omap_readl(reg + 0xC);
 	}
 
+#if  defined ( CONFIG_LGE_ANDRIOD_USB)
 	snprintf(device_serial, MAX_USB_SERIAL_NUM, "%08X%08X%08X%08X",
 					val[3], val[2], val[1], val[0]);
+#else // #if  defined ( CONFIG_LGE_ANDRIOD_USB)
+	snprintf(device_serial, MAX_USB_SERIAL_NUM, "0123456789ABCDEF");
+#endif // #if  defined ( CONFIG_LGE_ANDRIOD_USB)
 
 #ifdef CONFIG_USB_ANDROID_RNDIS
 	/* create a fake MAC address from our serial number.

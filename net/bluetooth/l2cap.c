@@ -1365,7 +1365,11 @@ static int l2cap_streaming_send(struct sock *sk)
 
 	while ((skb = sk->sk_send_head)) {
 		tx_skb = skb_clone(skb, GFP_ATOMIC);
-
+		if(tx_skb == NULL)
+		{
+			BT_DBG("l2cap_streaming_send - error tx_skb is null");
+			return 0;
+		}
 		control = get_unaligned_le16(tx_skb->data + L2CAP_HDR_SIZE);
 		control |= pi->next_tx_seq << L2CAP_CTRL_TXSEQ_SHIFT;
 		put_unaligned_le16(control, tx_skb->data + L2CAP_HDR_SIZE);
@@ -1416,6 +1420,11 @@ static void l2cap_retransmit_one_frame(struct sock *sk, u8 tx_seq)
 	}
 
 	tx_skb = skb_clone(skb, GFP_ATOMIC);
+	if(tx_skb == NULL)
+	{
+		BT_DBG("l2cap_retransmit_one_frame - error tx_skb is null");
+		return;
+	}
 	bt_cb(skb)->retries++;
 	control = get_unaligned_le16(tx_skb->data + L2CAP_HDR_SIZE);
 	control |= (pi->buffer_seq << L2CAP_CTRL_REQSEQ_SHIFT)
@@ -1450,6 +1459,11 @@ static int l2cap_ertm_send(struct sock *sk)
 		}
 
 		tx_skb = skb_clone(skb, GFP_ATOMIC);
+		if(tx_skb == NULL)
+		{
+			BT_DBG("l2cap_ertm_send - errort tx_skb is null");
+			return 0;
+		}
 
 		bt_cb(skb)->retries++;
 
@@ -2665,7 +2679,7 @@ static int l2cap_parse_conf_rsp(struct sock *sk, void *rsp, int len, void *data,
 	int type, olen;
 	unsigned long val;
 	struct l2cap_conf_rfc rfc;
-
+	memset(&rfc, NULL, sizeof(rfc)); 
 	BT_DBG("sk %p, rsp %p, len %d, req %p", sk, rsp, len, data);
 
 	while (len >= L2CAP_CONF_OPT_SIZE) {
@@ -2743,6 +2757,7 @@ static void l2cap_conf_rfc_get(struct sock *sk, void *rsp, int len)
 	int type, olen;
 	unsigned long val;
 	struct l2cap_conf_rfc rfc;
+	memset(&rfc, NULL, sizeof(rfc)); 
 
 	BT_DBG("sk %p, rsp %p, len %d", sk, rsp, len);
 
@@ -2770,6 +2785,8 @@ done:
 		break;
 	case L2CAP_MODE_STREAMING:
 		pi->mps    = le16_to_cpu(rfc.max_pdu_size);
+	default:
+		break;
 	}
 }
 
@@ -3525,6 +3542,7 @@ static int l2cap_ertm_reassembly_sdu(struct sock *sk, struct sk_buff *skb, u16 c
 		}
 
 		_skb = skb_clone(pi->sdu, GFP_ATOMIC);
+		
 		if (!_skb) {
 			pi->conn_state |= L2CAP_CONN_SAR_RETRY;
 			return -ENOMEM;
@@ -3745,6 +3763,11 @@ static int l2cap_streaming_reassembly_sdu(struct sock *sk, struct sk_buff *skb, 
 
 		if (pi->partial_sdu_len == pi->sdu_len) {
 			_skb = skb_clone(pi->sdu, GFP_ATOMIC);
+		if(_skb == NULL)
+		{
+			BT_DBG("l2cap_ertm_reassembly_sdu - error _skb is null");
+			return err;
+		}
 			err = sock_queue_rcv_skb(sk, _skb);
 			if (err < 0)
 				kfree_skb(_skb);
@@ -3770,6 +3793,8 @@ static void l2cap_check_srej_gap(struct sock *sk, u8 tx_seq)
 			break;
 
 		skb = skb_dequeue(SREJ_QUEUE(sk));
+		if(!skb) break;	//WBT LG_kernel_BT
+
 		control = bt_cb(skb)->sar << L2CAP_CTRL_SAR_SHIFT;
 		l2cap_ertm_reassembly_sdu(sk, skb, control);
 		l2cap_pi(sk)->buffer_seq_srej =
@@ -3810,6 +3835,11 @@ static void l2cap_send_srejframe(struct sock *sk, u8 tx_seq)
 		l2cap_send_sframe(pi, control);
 
 		new = kzalloc(sizeof(struct srej_list), GFP_ATOMIC);
+		if(new == NULL)
+		{
+			BT_DBG("l2cap_send_srejframe new is null");		
+			return;
+		}
 		new->tx_seq = pi->expected_tx_seq++;
 		list_add_tail(&new->list, SREJ_LIST(sk));
 	}

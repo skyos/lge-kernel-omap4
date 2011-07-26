@@ -49,15 +49,23 @@
 #include <linux/string.h>
 #include <linux/notifier.h>
 
+#ifdef CONFIG_TILER_OMAP
+#include <mach/tiler.h>
+#define TILER_MIN_PADDR		0x60000000
+#define TILER_MAX_PADDR		0x7fffffff
+#endif
+
 #include "img_defs.h"
 #include "servicesext.h"
 #include "kerneldisplay.h"
 #include "omaplfb.h"
 
 #define OMAPLFB_COMMAND_COUNT		1
-#define MAX_BUFFERS_FLIPPING		3
+#define MAX_BUFFERS_FLIPPING		4
 /* Put 0 as desired bpp to use the default in the framebuffer */
 #define DESIRED_BPP			0 /* Possible values 32,16,0 */
+
+#define S3D_BUFFER_BACKUP//NATTING_TEST
 
 /* Pointer Display->Services */
 static PFN_DC_GET_PVRJTABLE pfnGetPVRJTable = NULL;
@@ -172,10 +180,8 @@ static void FlushInternalSyncQueue(OMAPLFB_SWAPCHAIN *psSwapChain)
 
 		/* Flip the buffer if it hasn't been flipped */
 		if(psFlipItem->bFlipped == OMAP_FALSE)
-		{
 			OMAPLFBFlip(psSwapChain,
-				(unsigned long)psFlipItem->sSysAddr);
-		}
+				(unsigned long)psFlipItem->sSysAddr->uiAddr);
 
 		/* If the command didn't complete, assume it did */
 		if(psFlipItem->bCmdCompleted == OMAP_FALSE)
@@ -832,6 +838,14 @@ static PVRSRV_ERROR CreateDCSwapChain(IMG_HANDLE hDevice,
 		goto ErrorUnRegisterDisplayClient;
 	}
 	
+	mutex_init(&psSwapChain->stHdmiTiler.lock);
+	psSwapChain->stHdmiTiler.alloc = false;
+	psSwapChain->stHdmiTiler.overlay = omap_dss_get_overlay(1);
+	{
+		extern int AllocTilerForHdmi(OMAPLFB_SWAPCHAIN *psSwapChain, OMAPLFB_DEVINFO *psDevInfo);
+		if ( AllocTilerForHdmi(psSwapChain, psDevInfo) )
+			ERROR_PRINTK("Alloc tiler memory for HDMI GUI cloning failed during creating swap chain\n");
+	}
 	*phSwapChain = (IMG_HANDLE)psSwapChain;
 
 	return PVRSRV_OK;
@@ -905,6 +919,12 @@ static PVRSRV_ERROR DestroyDCSwapChain(IMG_HANDLE hDevice,
 	OMAPLFBFreeKernelMem(psSwapChain->psBuffer);
 	OMAPLFBFreeKernelMem(psSwapChain);
 
+	if ( psSwapChain->stHdmiTiler.alloc )
+	{
+		tiler_free(psSwapChain->stHdmiTiler.pAddr);
+		psSwapChain->stHdmiTiler.alloc = false;
+	}
+	mutex_destroy(&psSwapChain->stHdmiTiler.lock);
 	return PVRSRV_OK;
 }
 
@@ -1079,6 +1099,11 @@ ExitUnlock:
 	mutex_unlock(&psDevInfo->sSwapChainLockMutex);
 }
 
+#ifdef S3D_BUFFER_BACKUP//NATTING_TEST// temp until bug fixed
+extern int originFB_paddr;
+extern int originFB_vaddr;
+#endif
+
 /*
  * Performs a flip. This function takes the necessary steps to present
  * the buffer to be flipped in the display.
@@ -1121,6 +1146,16 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	if (psDevInfo->bDeviceSuspended)
 	{
 		/* If is suspended then assume the commands are completed */
+  #ifdef S3D_BUFFER_BACKUP//NATTING_TEST
+	// after LCD OFF, 3D image still comes...how come???
+    if(psFlipCmd->hPrivateTag==0xBA551E5)//3d
+    {
+      // clear 3d image here not to show when BL ON
+      WARNING_PRINTK("ProcessFlip::already suspended clear the buffer vaddr=0x%x\n", originFB_vaddr);
+      if (originFB_vaddr)// for Heavy 3D apk, first 3D display might not be fliped YET...
+        memset(originFB_vaddr,0x00,800*480*4);
+    }
+  #endif
 		psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(
 			hCmdCookie, IMG_TRUE);
 		goto ExitTrueUnlock;
@@ -1129,8 +1164,17 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 #if defined(SYS_USING_INTERRUPTS)
 
 	if( psFlipCmd->ui32SwapInterval == 0 ||
+		psDevInfo->ignore_sync ||
 		psSwapChain->bFlushCommands == OMAP_TRUE)
 	{
+#endif
+#if defined(CONFIG_MACH_LGE_COSMOPOLITAN)  
+		if ( psFlipCmd->hPrivateTag==0xBA551E5 ) {
+			psSwapChain->s3d_type = omap_dss_overlay_s3d_side_by_side;
+		} else {
+			psSwapChain->s3d_type = omap_dss_overlay_s3d_none;
+		}
+
 #endif
 		OMAPLFBFlip(psSwapChain,
 			(unsigned long)psBuffer->sSysAddr.uiAddr);
@@ -1148,7 +1192,14 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 		/* Mark the flip item as not flipped */
 		ulMaxIndex = psSwapChain->ulBufferCount - 1;
 		psFlipItem->bFlipped = OMAP_FALSE;
-
+		
+#if defined(CONFIG_MACH_LGE_COSMOPOLITAN)  
+		if ( psFlipCmd->hPrivateTag==0xBA551E5 ) {
+			psSwapChain->s3d_type = omap_dss_overlay_s3d_side_by_side;
+		} else {
+			psSwapChain->s3d_type = omap_dss_overlay_s3d_none;
+		}
+#endif
 		/*
 		 * The buffer is queued here, must be consumed by the workqueue
 		 */
@@ -1157,6 +1208,7 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 			(unsigned long)psFlipCmd->ui32SwapInterval;
 		psFlipItem->sSysAddr = &psBuffer->sSysAddr;
 		psFlipItem->bValid = OMAP_TRUE;
+		psFlipItem->bCmdCompleted = OMAP_FALSE;
 
 		psSwapChain->ulInsertIndex++;
 		if(psSwapChain->ulInsertIndex > ulMaxIndex)
@@ -1206,6 +1258,49 @@ void OMAPLFBDriverSuspend(void)
 
 		psDevInfo->bDeviceSuspended = OMAP_TRUE;
 		SetFlushStateInternalNoLock(psDevInfo, OMAP_TRUE);
+#if defined(CONFIG_MACH_LGE_COSMOPOLITAN)		
+		{				
+			struct omap_overlay *overlay;
+			struct omap_overlay_info overlay_info;
+
+			overlay = omap_dss_get_overlay(0);
+			overlay->get_overlay_info( overlay, &overlay_info );
+			
+			if(overlay_info.s3d_type == omap_dss_overlay_s3d_interlaced)
+			{
+				struct omap_overlay_manager *manager;					
+				struct fb_info * framebuffer = psDevInfo->psLINFBInfo;		
+				
+      #ifndef S3D_BUFFER_BACKUP
+				memset(overlay_info.vaddr,0x00,framebuffer->fix.line_length*framebuffer->var.yres);
+      #else
+        printk("## S3D ## must be here only for suspending on 3D playing..\n");
+        overlay_info.paddr = originFB_paddr ;
+        overlay_info.vaddr = originFB_vaddr ;
+      #endif
+			
+				overlay->set_overlay_info(overlay, &overlay_info);		
+
+				manager = overlay->manager;
+
+				if (manager) {
+					manager->apply(manager);			
+					manager->wait_for_vsync(manager);								
+				}
+			}
+		}
+
+		if(psDevInfo->psSwapChain != NULL) {
+			mutex_lock(&psDevInfo->psSwapChain->stHdmiTiler.lock);
+			if(psDevInfo->psSwapChain->stHdmiTiler.alloc)
+			{
+				extern void FreeTilerForHdmi(OMAPLFB_SWAPCHAIN *psSwapChain);
+				FreeTilerForHdmi(psDevInfo->psSwapChain);
+				printk("DOLCOM : free hdmi alloc memory\n");
+			}
+			mutex_unlock(&psDevInfo->psSwapChain->stHdmiTiler.lock);
+		}
+#endif
 
 		mutex_unlock(&psDevInfo->sSwapChainLockMutex);
 	}
@@ -1238,6 +1333,16 @@ void OMAPLFBDriverResume(void)
 		psDevInfo->bDeviceSuspended = OMAP_FALSE;
 
 		mutex_unlock(&psDevInfo->sSwapChainLockMutex);
+	}
+	if(psDevInfo->psSwapChain != NULL) {
+		mutex_lock(&psDevInfo->psSwapChain->stHdmiTiler.lock);
+		if ( !psDevInfo->psSwapChain->stHdmiTiler.alloc )
+		{
+			extern int AllocTilerForHdmi(OMAPLFB_SWAPCHAIN *psSwapChain, OMAPLFB_DEVINFO *psDevInfo);
+			if ( AllocTilerForHdmi(psDevInfo->psSwapChain, psDevInfo) )
+				ERROR_PRINTK("Alloc tiler memory for HDMI GUI cloning failed during creating swap chain\n");
+		}
+		mutex_unlock(&psDevInfo->psSwapChain->stHdmiTiler.lock);
 	}
 }
 #endif /* defined(LDM_PLATFORM) */
@@ -1379,10 +1484,33 @@ static OMAP_ERROR InitDev(OMAPLFB_DEVINFO *psDevInfo, int fb_idx)
 				DESIRED_BPP);
 	}
 	acquire_console_sem();
+
+	FBSize = (psLINFBInfo->screen_size) != 0 ?
+		psLINFBInfo->screen_size : psLINFBInfo->fix.smem_len;
+	psPVRFBInfo->sSysAddr.uiAddr = psLINFBInfo->fix.smem_start;
+	psPVRFBInfo->sCPUVAddr = psLINFBInfo->screen_base;
+	psPVRFBInfo->ulWidth = psLINFBInfo->var.xres;
+	psPVRFBInfo->ulHeight = psLINFBInfo->var.yres;
+	psPVRFBInfo->ulByteStride = psLINFBInfo->fix.line_length;
+	psPVRFBInfo->ulFBSize = FBSize;
+	psPVRFBInfo->ulBufferSize =
+		psPVRFBInfo->ulHeight * psPVRFBInfo->ulByteStride;
+
+	/* Calculate the buffers according to the flipping technique */
+#if defined(FLIP_TECHNIQUE_FRAMEBUFFER)
 	psLINFBInfo->var.activate = FB_ACTIVATE_FORCE;
 	fb_set_var(psLINFBInfo, &psLINFBInfo->var);
 	buffers_available =
 		psLINFBInfo->var.yres_virtual / psLINFBInfo->var.yres;
+
+#elif defined(FLIP_TECHNIQUE_OVERLAY)
+	buffers_available =
+		psPVRFBInfo->ulFBSize / psPVRFBInfo->ulBufferSize;
+
+#else
+#error No flipping technique selected, please define \
+	FLIP_TECHNIQUE_FRAMEBUFFER or FLIP_TECHNIQUE_OVERLAY
+#endif
 
 	if(buffers_available <= 1)
 	{
@@ -1435,14 +1563,26 @@ static OMAP_ERROR InitDev(OMAPLFB_DEVINFO *psDevInfo, int fb_idx)
 	DEBUG_PRINTK("*Stride (bytes): %u",
 		(unsigned int)psLINFBInfo->fix.line_length);
 
-	psPVRFBInfo->sSysAddr.uiAddr = psLINFBInfo->fix.smem_start;
-	psPVRFBInfo->sCPUVAddr = psLINFBInfo->screen_base;
-	psPVRFBInfo->ulWidth = psLINFBInfo->var.xres;
-	psPVRFBInfo->ulHeight = psLINFBInfo->var.yres;
-	psPVRFBInfo->ulByteStride = psLINFBInfo->fix.line_length;
-	psPVRFBInfo->ulFBSize = FBSize;
-	psPVRFBInfo->ulBufferSize =
-		psPVRFBInfo->ulHeight * psPVRFBInfo->ulByteStride;
+#ifdef CONFIG_TILER_OMAP
+	/* If TILER is being used, use correct physical stride and FB size */
+	if ((psPVRFBInfo->sSysAddr.uiAddr >= TILER_MIN_PADDR) &&
+		(psPVRFBInfo->sSysAddr.uiAddr <= TILER_MAX_PADDR)) {
+		unsigned long max_rows;
+		u32 tiler_naddr;
+		/* Get the number of maximum pixel rows */
+		max_rows = psPVRFBInfo->ulFBSize / psPVRFBInfo->ulByteStride;
+		/* Get the physical stride according to the TILER container */
+		tiler_naddr = tiler_get_natural_addr(
+			(void *)psPVRFBInfo->sSysAddr.uiAddr);
+		psPVRFBInfo->ulByteStride = tiler_stride(tiler_naddr);
+		/* Calculate the whole TILER region to map in bytes */
+		psPVRFBInfo->ulFBSize = max_rows * psPVRFBInfo->ulByteStride;
+		/* Re-calculate buffer size with previous stride */
+		psPVRFBInfo->ulBufferSize =
+			psPVRFBInfo->ulHeight * psPVRFBInfo->ulByteStride;
+	}
+#endif
+
 	/* Get physical display size for DPI calculation */
 	if (psLINFBInfo->var.width < 0 || psLINFBInfo->var.height < 0) {
 		psDevInfo->sDisplayInfo.ui32PhysicalWidthmm = 0;
@@ -1453,6 +1593,11 @@ static OMAP_ERROR InitDev(OMAPLFB_DEVINFO *psDevInfo, int fb_idx)
 		psDevInfo->sDisplayInfo.ui32PhysicalHeightmm =
 			psLINFBInfo->var.height;
 	}
+
+#ifdef CONFIG_MACH_LGE_COSMOPOLITAN
+	psDevInfo->sDisplayInfo.ui32PhysicalWidthmm = 56;
+	psDevInfo->sDisplayInfo.ui32PhysicalHeightmm = 94;
+#endif
 
 	/* XXX: Page aligning with 16bpp causes the
 	 * position of framebuffer address to look in the wrong place.
@@ -1510,7 +1655,7 @@ static OMAP_ERROR InitDev(OMAPLFB_DEVINFO *psDevInfo, int fb_idx)
 /*
  *  Initialization routine for the 3rd party display driver
  */
-OMAP_ERROR OMAPLFBInit(void)
+OMAP_ERROR OMAPLFBInit(struct omaplfb_device *omaplfb_dev)
 {
 	OMAPLFB_DEVINFO *psDevInfo;
 	PFN_CMD_PROC pfnCmdProcList[OMAPLFB_COMMAND_COUNT];
@@ -1550,12 +1695,13 @@ OMAP_ERROR OMAPLFBInit(void)
 			sizeof(OMAPLFB_DEVINFO) * FRAMEBUFFER_COUNT);
 	if(!pDisplayDevices)
 	{
-		pDisplayDevices = NULL;
 		ERROR_PRINTK("Out of memory");
 		return OMAP_ERROR_OUT_OF_MEMORY;
 	}
 	memset(pDisplayDevices, 0, sizeof(OMAPLFB_DEVINFO) *
 		FRAMEBUFFER_COUNT);
+	omaplfb_dev->display_info_list = pDisplayDevices;
+	omaplfb_dev->display_count = FRAMEBUFFER_COUNT;
 
 	/*
 	 * Initialize each display device
@@ -1594,6 +1740,7 @@ OMAP_ERROR OMAPLFBInit(void)
 		psDevInfo->psSwapChain = 0;
 		psDevInfo->bFlushCommands = OMAP_FALSE;
 		psDevInfo->bDeviceSuspended = OMAP_FALSE;
+		psDevInfo->ignore_sync = OMAP_FALSE;
 
 		if(psDevInfo->sDisplayInfo.ui32MaxSwapChainBuffers > 1)
 		{

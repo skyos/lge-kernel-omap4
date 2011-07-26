@@ -30,6 +30,7 @@
 /* HDMI EDID Extension Data Block Tags  */
 #define HDMI_EDID_EX_DATABLOCK_TAG_MASK		0xE0
 #define HDMI_EDID_EX_DATABLOCK_LEN_MASK		0x1F
+#define HDMI_EDID_EX_SUPPORTS_AI_MASK      0x80
 
 #define EDID_TIMING_DESCRIPTOR_SIZE		0x12
 #define EDID_DESCRIPTOR_BLOCK0_ADDRESS		0x36
@@ -54,6 +55,7 @@
 #define HDMI_EDID_H_BORDER_OFFSET		15
 #define HDMI_EDID_V_BORDER_OFFSET		16
 #define HDMI_EDID_FLAGS_OFFSET			17
+#define HDMI_IEEE_REGISTRATION_ID           0x000c03
 
 /* HDMI Connected States */
 #define HDMI_STATE_NOMONITOR	0 /* No HDMI monitor connected*/
@@ -75,7 +77,10 @@
 #define HDMI_EDID_DTD_TAG_ASCII_STRING		0xFE
 
 #define HDMI_IMG_FORMAT_MAX_LENGTH		20
+#define HDMI_VIDEO_NATIVE_DTDS_MASK		0x0f
 #define HDMI_AUDIO_FORMAT_MAX_LENGTH		10
+#define HDMI_AUDIO_BASIC_MASK      0x40
+
 
 /* HDMI EDID Extenion Data Block Values: Video */
 #define HDMI_EDID_EX_VIDEO_NATIVE		0x80
@@ -269,10 +274,16 @@ int hdmi_get_datablock_offset(u8 *edid, enum extension_edid_db datablock,
 								int *offset);
 int hdmi_get_image_format(u8 *edid, struct image_format *format);
 int hdmi_get_audio_format(u8 *edid, struct audio_format *format);
+bool hdmi_has_ieee_id(u8 *edid);
+int hdmi_get_video_svds(u8 *edid, int *offset, int *length);
+
+
 void hdmi_get_av_delay(u8 *edid, struct latency *lat);
 void hdmi_deep_color_support_info(u8 *edid, struct deep_color *format);
 int hdmi_tv_yuv_supported(u8 *edid);
 bool hdmi_s3d_supported(u8 *edid);
+bool hdmi_ai_supported(u8 *edid);
+
 const struct omap_video_timings *hdmi_get_omap_timing(int ix);
 
 #ifdef __cplusplus

@@ -22,6 +22,10 @@
 #include <linux/cpumask.h>
 #include <asm/div64.h>
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
+#include <linux/earlysuspend.h>
+#endif
+
 #define CPUFREQ_NAME_LEN 16
 
 
@@ -238,6 +242,10 @@ struct cpufreq_driver {
 	int	(*suspend)	(struct cpufreq_policy *policy, pm_message_t pmsg);
 	int	(*resume)	(struct cpufreq_policy *policy);
 	struct freq_attr	**attr;
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	struct early_suspend cpufreq_early_suspend;
+#endif
 };
 
 /* flags */
@@ -294,6 +302,10 @@ __ATTR(_name, 0444, show_##_name##_old, NULL)
 static struct freq_attr _name =			\
 __ATTR(_name, 0644, show_##_name, store_##_name)
 
+#define cpufreq_freq_attr_allrw(_name)		\
+static struct freq_attr _name =			\
+__ATTR(_name, 0666, show_##_name, store_##_name)
+
 #define cpufreq_freq_attr_rw_old(_name)		\
 static struct freq_attr _name##_old =		\
 __ATTR(_name, 0644, show_##_name##_old, store_##_name##_old)
@@ -321,6 +333,7 @@ __ATTR(_name, 0644, show_##_name, store_##_name)
  *********************************************************************/
 int cpufreq_get_policy(struct cpufreq_policy *policy, unsigned int cpu);
 int cpufreq_update_policy(unsigned int cpu);
+int cpufreq_rollback_policy(void);
 
 #ifdef CONFIG_CPU_FREQ
 /* query the current CPU frequency (in kHz). If zero, cpufreq couldn't detect it */

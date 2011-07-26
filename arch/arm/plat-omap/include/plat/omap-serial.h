@@ -37,6 +37,21 @@
 #define OMAP_MDR1_MODE16X	0x00
 #define OMAP_MODE13X_SPEED	230400
 
+#define DMA_FOR_UART2
+
+#ifdef DMA_FOR_UART2
+ /*
+ * From OMAP4430 ES 2.0 onwards set
+ * tx_threshold while using UART in DMA Mode
+ * and ensure tx_threshold + tx_trigger <= 63
+ */
+#define UART_MDR3		0x20
+#define SET_DMA_TX_THRESHOLD	0x04
+#define UART_TX_DMA_THRESHOLD	0x21
+/* Setting TX Threshold Level to 62 */
+#define TX_FIFO_THR_LVL	0x3E
+#endif
+
 /*
  * From OMAP4430 ES 2.0 onwards set
  * tx_threshold while using UART in DMA Mode
@@ -77,11 +92,7 @@
 
 #define OMAP_UART_DMA_CH_FREE	-1
 
-#define DEFAULT_RXDMA_TIMEOUT	(3 * HZ)	/* RX DMA timeout (jiffies) */
-#define DEFAULT_RXDMA_POLLRATE	1		/* RX DMA polling rate (us) */
-#define DEFAULT_RXDMA_BUFSIZE	4096		/* RX DMA buffer size */
-#define DEFAULT_IDLE_TIMEOUT	5000		/* UART idle timeout (ms) */
-
+#define RX_TIMEOUT		(3 * HZ)
 #define OMAP_MAX_HSUART_PORTS	4
 #define UART1                  (0x0)
 #define UART2                  (0x1)
@@ -110,11 +121,11 @@ struct omap_uart_port_info {
 	/* beyond this is the platform specific fields */
 	int                     use_dma;        /* DMA Enable / Disable */
 	int                     dma_rx_buf_size;/* DMA Rx Buffer Size */
-	int                     dma_rx_poll_rate;/* DMA RX poll rate */
 	int                     dma_rx_timeout; /* DMA RX timeout */
 	unsigned int            idle_timeout;   /* Omap Uart Idle Time out */
+#ifdef DMA_FOR_UART2
 	u8			omap4_tx_threshold;
-	void			(*plat_hold_wakelock)(void *p, int flag);
+#endif
 };
 
 struct uart_omap_dma {
@@ -139,9 +150,11 @@ struct uart_omap_dma {
 	/* timer to poll activity on rx dma */
 	struct timer_list	rx_timer;
 	int			rx_buf_size;
-	int			rx_poll_rate;
 	int			rx_timeout;
+#ifdef DMA_FOR_UART2
 	u8			tx_threshold;
+#endif
+
 };
 
 struct uart_omap_port {
@@ -165,19 +178,11 @@ struct uart_omap_port {
 	unsigned char		msr_saved_flags;
 	char			name[20];
 	unsigned long		port_activity;
-	void			(*plat_hold_wakelock)(void *up, int flag);
 };
 
-enum {
-	WAKELK_IRQ,
-	WAKELK_RESUME,
-	WAKELK_TX,
-	WAKELK_RX
-};
-
-int omap_uart_active(int num, u32 timeout);
-void omap_uart_update_jiffies(int num);
+int omap_uart_active(int num);
 #ifdef CONFIG_PM
 void omap_uart_enable_clock_from_irq(int uart_num);
+void omap_uart_mdr1_errataset(int uart_no, u8 mdr1_val, u8 fcr_val);
 #endif
 #endif /* __OMAP_SERIAL_H__ */

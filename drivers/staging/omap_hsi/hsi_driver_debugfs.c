@@ -108,7 +108,7 @@ static int hsi_debug_port_show(struct seq_file *m, void *p)
 	}
 	seq_printf(m, "BREAK\t\t: 0x%08x\n",
 		   hsi_inl(base, HSI_HST_BREAK_REG(port)));
-	for (ch = 0; ch < hsi_port->max_ch; ch++) {
+	for (ch = 0; ch < 8; ch++) {
 		buff_offset = hsi_hst_buffer_reg(hsi_ctrl, port, ch);
 		if (buff_offset >= 0)
 			seq_printf(m, "BUFFER_CH%d\t: 0x%08x\n", ch,
@@ -148,7 +148,7 @@ static int hsi_debug_port_show(struct seq_file *m, void *p)
 		   hsi_inl(base, HSI_HSR_ERROR_REG(port)));
 	seq_printf(m, "ERRORACK\t: 0x%08x\n",
 		   hsi_inl(base, HSI_HSR_ERRORACK_REG(port)));
-	for (ch = 0; ch < hsi_port->max_ch; ch++) {
+	for (ch = 0; ch < 8; ch++) {
 		buff_offset = hsi_hsr_buffer_reg(hsi_ctrl, port, ch);
 		if (buff_offset >= 0)
 			seq_printf(m, "BUFFER_CH%d\t: 0x%08x\n", ch,
@@ -161,7 +161,7 @@ static int hsi_debug_port_show(struct seq_file *m, void *p)
 					   HSI_HSR_MAPPING_FIFO_REG(fifo)));
 		}
 		seq_printf(m, "DLL\t: 0x%08x\n",
-			   hsi_inl(base, HSI_HSR_DLL_REG(port)));
+			   hsi_inl(base, HSI_HSR_DLL_REG));
 		seq_printf(m, "DIVISOR\t: 0x%08x\n",
 			   hsi_inl(base, HSI_HSR_DIVISOR_REG(port)));
 	}
@@ -464,7 +464,9 @@ int __init hsi_debug_add_ctrl(struct hsi_dev *hsi_ctrl)
 		debugfs_create_file("regs", S_IRUGO, dir,
 				    &hsi_ctrl->hsi_port[port],
 				    &hsi_port_regs_fops);
-		debugfs_create_file("counters", S_IRUGO | S_IWUGO, dir,
+
+		// S_IWUGO -> S_IWUSR
+		debugfs_create_file("counters", S_IRUGO | S_IWUSR, dir,
 				    &hsi_ctrl->hsi_port[port],
 				    &hsi_port_counters_fops);
 	}

@@ -140,7 +140,7 @@ int __init omap_mux_init_gpio(int gpio, int val)
 	return -ENODEV;
 }
 
-static int __init _omap_mux_init_signal(struct omap_mux_partition *partition,
+static int _omap_mux_init_signal(struct omap_mux_partition *partition,
 					const char *muxname, int val)
 {
 	struct omap_mux_entry *e;
@@ -204,7 +204,7 @@ static int __init _omap_mux_init_signal(struct omap_mux_partition *partition,
 	return -ENODEV;
 }
 
-static u16 omap_mux_read_signal(const char *muxname)
+u16 omap_mux_read_signal(const char *muxname)
 {
 	struct omap_mux_partition *partition;
 	struct omap_mux_entry *e;
@@ -264,7 +264,20 @@ int omap_mux_enable_wakeup(const char *muxname)
 	return 0;
 }
 
-int __init omap_mux_init_signal(const char *muxname, int val)
+int omap_mux_disable_wakeup(const char *muxname)
+{
+	u16 val;
+
+	val = omap_mux_read_signal(muxname);
+	if (val == -ENODEV)
+		return val;
+	val &= ~OMAP44XX_PADCONF_WAKEUPENABLE0;
+	omap_mux_init_signal(muxname, val);
+	return 0;
+}
+
+int omap_mux_init_signal(const char *muxname, int val)
+
 {
 	struct omap_mux_partition *partition;
 	int ret;
@@ -491,7 +504,7 @@ static void __init omap_mux_dbg_create_entry(
 		struct omap_mux *m = &e->mux;
 		m->partition = partition;
 
-		(void)debugfs_create_file(m->muxnames[0], S_IWUGO, mux_dbg_dir,
+		(void)debugfs_create_file(m->muxnames[0], S_IWUSR, mux_dbg_dir,
 					  m, &omap_mux_dbg_signal_fops);
 	}
 }
@@ -845,7 +858,8 @@ static void omap_mux_init_signals(struct omap_mux_partition *partition,
 				  struct omap_board_mux *board_mux)
 {
 	omap_mux_set_cmdline_signals();
-	omap_mux_write_array(partition->base, board_mux);
+	
+	omap_mux_write_array(partition, board_mux); 
 }
 
 #else

@@ -25,6 +25,13 @@
 
 #ifdef CONFIG_CPU_IDLE
 
+//#define DEBUG_CPUIDLE
+#ifdef DEBUG_CPUIDLE
+static int n_print_count=0;
+static int old_c_status=0;
+static char old_c_name[CPUIDLE_NAME_LEN]= {0,};
+#endif // DEBUG_CPUIDLE
+
 #define OMAP4_MAX_STATES	4
 
 /* C1 - CPU0 WFI + CPU1 OFF + MPU ON   + CORE ON  */
@@ -74,6 +81,20 @@ static int omap4_idle_bm_check(void)
 	return 0;
 }
 
+static void pl310flush(void)
+{
+
+    u32 temp = 0;
+    u32 vaddr = OMAP44XX_L2CACHE_BASE + 0x730;
+    omap_writel(temp,vaddr);
+    while((omap_readl(vaddr) & 0x01))
+    		;
+    temp = omap_readl(vaddr);
+    omap_writel(temp,vaddr);
+
+}
+
+
 /**
  * omap4_enter_idle - Programs OMAP4 to enter the specified state
  * @dev: cpuidle device
@@ -102,6 +123,7 @@ static int omap4_enter_idle(struct cpuidle_device *dev,
 	 */
 	if (dev->cpu) {
 		wmb();
+		pl310flush();
 		do_wfi();
 		goto return_sleep_time;
 	}
@@ -111,6 +133,7 @@ static int omap4_enter_idle(struct cpuidle_device *dev,
 	 */
 	if (num_online_cpus() > 1) {
 		wmb();
+		pl310flush();
 		do_wfi();
 		goto return_sleep_time;
 	}
@@ -121,12 +144,24 @@ static int omap4_enter_idle(struct cpuidle_device *dev,
 	cpu1_state = pwrdm_read_pwrst(cpu1_pd);
 	if (cpu1_state != PWRDM_POWER_OFF) {
 		wmb();
+		pl310flush();
 		do_wfi();
 		goto return_sleep_time;
 	}
 
 	if (cx->type > OMAP4_STATE_C1)
 		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu_id);
+
+#ifdef DEBUG_CPUIDLE
+	if ((old_c_status != cx->type) || strcmp(old_c_name, state->name) != 0)
+	{
+			if(n_print_count % 100 == 0) 
+				printk("C-name=%s, C-status=%d\n", state->name, cx->type);
+			n_print_count++; 
+	}
+	old_c_status = cx->type;
+	strcpy(old_c_name, state->name);
+#endif
 
 #ifdef CONFIG_PM_DEBUG
 	pwrdm_pre_transition();
@@ -135,6 +170,7 @@ static int omap4_enter_idle(struct cpuidle_device *dev,
 	omap4_set_pwrdm_state(mpu_pd, cx->mpu_state);
 	pwrdm_set_logic_retst(core_pd, cx->core_logic_state);
 	omap4_set_pwrdm_state(core_pd, cx->core_state);
+	pl310flush();
 
 	omap4_enter_sleep(dev->cpu, cx->cpu0_state);
 
@@ -232,6 +268,8 @@ void omap_init_power_states(void)
 		CPUIDLE_FLAG_CHECK_BM;
 	omap4_power_states[OMAP4_STATE_C2].desc = "MPU INA + CORE INA";
 
+	//omap4_power_states[OMAP4_STATE_C2].core_state = PWRDM_POWER_ON;
+	
 	/*
 	 * C3 - CPU0 OFF + CPU1 OFF + MPU CSWR + CORE OSWR
 	 */
@@ -254,6 +292,9 @@ void omap_init_power_states(void)
 		CPUIDLE_FLAG_CHECK_BM;
 	omap4_power_states[OMAP4_STATE_C3].desc = "MPU CSWR + CORE OSWR";
 
+	//omap4_power_states[OMAP4_STATE_C3].core_state = PWRDM_POWER_ON;
+	//omap4_power_states[OMAP4_STATE_C3].core_logic_state = PWRDM_POWER_RET;
+
 	/*
 	 * C4 - CPU0 OFF + CPU1 OFF + MPU OSWR + CORE OSWR
 	 */
@@ -275,6 +316,10 @@ void omap_init_power_states(void)
 	omap4_power_states[OMAP4_STATE_C4].flags = CPUIDLE_FLAG_TIME_VALID |
 		CPUIDLE_FLAG_CHECK_BM;
 	omap4_power_states[OMAP4_STATE_C4].desc = "MPU OSWR + CORE OSWR";
+
+	//omap4_power_states[OMAP4_STATE_C4].core_state = PWRDM_POWER_ON;
+	//omap4_power_states[OMAP4_STATE_C4].core_logic_state = PWRDM_POWER_RET;	
+	
 }
 
 struct cpuidle_driver omap4_idle_driver = {

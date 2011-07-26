@@ -610,6 +610,10 @@ int omapfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 		struct omapfb_vram_info		vram_info;
 		struct omapfb_tearsync_info	tearsync_info;
 		struct omapfb_display_info	display_info;
+
+#ifdef LGE_FW_TDMB
+		struct omapfb_ccs			ccs_info;
+#endif // LGE_FW_TDMB
 	} p;
 
 	int r = 0;
@@ -891,6 +895,38 @@ int omapfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 			r = -EFAULT;
 		break;
 	}
+
+#ifdef LGE_FW_TDMB
+	case OMAPFB_SET_CCS_MATRIX :
+		printk("OMAPFB_SET_CCS_MATRIX\n");
+		if (copy_from_user(&p.ccs_info, (void __user *)arg,
+					sizeof(p.ccs_info))) {
+			r = -EFAULT;
+			break;
+		}
+
+		if (!display || !display->set_ccs) {
+			r = -ENODEV;
+			break;
+		}
+
+		{
+			struct omap_ccs_matrix ccs_info;
+
+			ccs_info.ry = p.ccs_info.ccs[0];
+			ccs_info.rcr = p.ccs_info.ccs[1];
+			ccs_info.rcb = p.ccs_info.ccs[2];
+			ccs_info.gy = p.ccs_info.ccs[3];
+			ccs_info.gcr = p.ccs_info.ccs[4];
+			ccs_info.gcb = p.ccs_info.ccs[5];
+			ccs_info.by = p.ccs_info.ccs[6];
+			ccs_info.bcr = p.ccs_info.ccs[7];
+			ccs_info.bcb = p.ccs_info.ccs[8];		
+
+			r = display->set_ccs(display, &ccs_info);
+		}
+		break;
+#endif // LGE_FW_TDMB
 
 	default:
 		dev_err(fbdev->dev, "Unknown ioctl 0x%x\n", cmd);

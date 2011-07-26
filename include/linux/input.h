@@ -101,6 +101,8 @@ struct input_absinfo {
 #define EV_MAX			0x1f
 #define EV_CNT			(EV_MAX+1)
 
+#define EV_HOV			0x18
+#define EV_TG			0x19
 /*
  * Synchronization events.
  */
@@ -108,6 +110,7 @@ struct input_absinfo {
 #define SYN_REPORT		0
 #define SYN_CONFIG		1
 #define SYN_MT_REPORT		2
+#define SYN_TG_REPORT		3
 
 /*
  * Keys and buttons
@@ -378,6 +381,9 @@ struct input_absinfo {
 #define KEY_WIMAX		246
 #define KEY_RFKILL		247	/* Key that controls all radios */
 
+#define KEY_3D			249		/* Cosmopolitan 3D barrier key */
+
+#define KEY_HOOK		250		/* Cosmopolitan Earjack hook key */
 /* Code 255 is reserved for special needs of AT keyboard driver */
 
 #define BTN_MISC		0x100
@@ -645,6 +651,14 @@ struct input_absinfo {
 #define KEY_MIN_INTERESTING	KEY_MUTE
 #define KEY_MAX			0x2ff
 #define KEY_CNT			(KEY_MAX+1)
+
+/* HOV SCAN CODE */
+#define HOV_X                  0x00
+#define HOV_Y                  0x01
+
+/* TG_SCAN CODE */
+#define TG_DIR                 0x00
+#define TG_SPEED               0x01
 
 /*
  * Relative axes

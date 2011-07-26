@@ -334,9 +334,21 @@ int mmc_sd_switch(struct mmc_card *card, int mode, int group,
 
 	sg_init_one(&sg, resp, 64);
 
+
+
+
 	mmc_set_data_timeout(&data, card);
 
+#ifdef CONFIG_MACH_LGE_MMC_REFRESH	
+
+	if(mmc_wait_for_req(card->host, &mrq) == 0xbcbc)
+	{
+		data.error = 0xbcbc;
+	}
+
+#else
 	mmc_wait_for_req(card->host, &mrq);
+#endif	
 
 	if (cmd.error)
 		return cmd.error;

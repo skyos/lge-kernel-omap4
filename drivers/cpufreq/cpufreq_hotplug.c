@@ -380,9 +380,11 @@ static struct attribute_group dbs_attr_group = {
 };
 
 /************************** sysfs end ************************/
-
+extern int cosmo_panel_suspend_flag;
 static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 {
+	extern bool in_dpll_cascading;
+
 	/* combined load of all enabled CPUs */
 	unsigned int total_load = 0;
 	/* single largest CPU load */
@@ -399,6 +401,8 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 	unsigned int index = 0;
 	unsigned int i, j;
 
+	static int overload_cnt = 0;
+	
 	policy = this_dbs_info->cur_policy;
 
 	/*
@@ -483,6 +487,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		dbs_tuners_ins.hotplug_load_index = 0;
 
 	/* check for frequency increase */
+#if 0
 	if (avg_load > dbs_tuners_ins.up_threshold) {
 		/* should we enable auxillary CPUs? */
 		if (num_online_cpus() < 2 && hotplug_in_avg_load >
@@ -490,23 +495,46 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 			cpu_up(1);
 			goto out;
 		}
+#else
+	if ((max_load > dbs_tuners_ins.up_threshold) || 
+		     (avg_load > dbs_tuners_ins.up_threshold)) {
+		if(in_dpll_cascading && overload_cnt < 2){	// check overloading case
+			overload_cnt++;
+			goto out;
+		}
+
+		overload_cnt = 0;
+		
+		/* should we enable auxillary CPUs? */
+		if (!in_dpll_cascading && num_online_cpus() < 2 && hotplug_in_avg_load >
+				dbs_tuners_ins.up_threshold) {
+			cpu_up(1);
+			goto out;
+		}
+#endif
 
 		/* increase to highest frequency supported */
-		if (policy->cur < policy->max)
+		if (policy->cur < policy->max) {
+		mutex_lock(&this_dbs_info->timer_mutex);
 			__cpufreq_driver_target(policy, policy->max,
 					CPUFREQ_RELATION_H);
+			mutex_unlock(&this_dbs_info->timer_mutex);
+                 }
 
 		goto out;
 	}
+
+	overload_cnt = 0;
 
 	/* check for frequency decrease */
 	if (avg_load < dbs_tuners_ins.down_threshold) {
 		/* are we at the minimum frequency already? */
 		if (policy->cur == policy->min) {
 			/* should we disable auxillary CPUs? */
-			if (num_online_cpus() > 1 && hotplug_out_avg_load <
-					dbs_tuners_ins.down_threshold) {
+			if (num_online_cpus() > 1 && hotplug_out_avg_load < dbs_tuners_ins.down_threshold) {
+				#if 1 	 	
 				cpu_down(1);
+				#endif
 			}
 			goto out;
 		}
@@ -519,9 +547,15 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 			goto out;
 		}
 
+		mutex_lock(&this_dbs_info->timer_mutex);//gyeyoung patch
 		__cpufreq_driver_target(policy,
 				this_dbs_info->freq_table[index].frequency,
 				CPUFREQ_RELATION_L);
+		mutex_unlock(&this_dbs_info->timer_mutex);//gyeyoung patch
+
+	   	if (num_online_cpus() > 1 && in_dpll_cascading) {
+   			cpu_down(1);
+	   	}
 	}
 out:
 	mutex_unlock(&dbs_mutex);
@@ -538,10 +572,10 @@ static void do_dbs_timer(struct work_struct *work)
 	int delay = usecs_to_jiffies(dbs_tuners_ins.sampling_rate);
 	delay -= jiffies % delay;
 
-	mutex_lock(&dbs_info->timer_mutex);
+//	mutex_lock(&dbs_info->timer_mutex);
 	dbs_check_cpu(dbs_info);
 	queue_delayed_work_on(cpu, khotplug_wq, &dbs_info->work, delay);
-	mutex_unlock(&dbs_info->timer_mutex);
+//	mutex_unlock(&dbs_info->timer_mutex);
 }
 
 static inline void dbs_timer_init(struct cpu_dbs_info_s *dbs_info)

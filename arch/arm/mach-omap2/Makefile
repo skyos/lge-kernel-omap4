@@ -81,6 +81,7 @@ obj-$(CONFIG_ARCH_OMAP4)		+= cm4xxx.o
 
 # EMIF
 obj-$(CONFIG_ARCH_OMAP4)		+= emif.o lpddr2_jedec_data.o lpddr2_elpida_data.o
+obj-$(CONFIG_MACH_LGE_CX2_EVB)  += lpddr2_samsung_data.o
 
 # Clock framework
 obj-$(CONFIG_ARCH_OMAP2)		+= $(clock-common) clock2xxx.o \
@@ -190,7 +191,13 @@ obj-$(CONFIG_MACH_OMAP_4430SDP)		+= board-4430sdp.o \
 
 obj-$(CONFIG_MACH_OMAP4_PANDA)		+= board-omap4panda.o \
 					   hsmmc.o
+obj-$(CONFIG_MACH_LGE_COSMOPOLITAN)	+= board-cosmopolitan.o \
+					   board-connectivity.o \
+					   hsmmc.o wakelock_check.o cdc_tcxo.o
 obj-$(CONFIG_TIWLAN_SDIO)               += board-4430sdp-wifi.o
+
+obj-$(CONFIG_MACH_LGE_COSMOPOLITAN)	+= cosmo_gps.o
+
 obj-$(CONFIG_MACH_OMAP3517EVM)		+= board-am3517evm.o
 
 obj-$(CONFIG_MACH_SBC3530)		+= board-omap3stalker.o \

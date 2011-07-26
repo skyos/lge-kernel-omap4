@@ -147,6 +147,19 @@ static void omap_mcbsp_dump_reg(u8 id)
 	dev_dbg(mcbsp->dev, "***********************\n");
 }
 
+unsigned int omap_mcbsp_get_irqstatus(unsigned int id){
+	struct omap_mcbsp *mcbsp;
+	unsigned int irq_status = 0;
+	mcbsp = id_to_mcbsp_ptr(id);
+
+	if( mcbsp ){
+		irq_status = MCBSP_READ(mcbsp, IRQST);
+	}
+
+	return irq_status;
+}
+EXPORT_SYMBOL(omap_mcbsp_get_irqstatus);
+
 static irqreturn_t omap_mcbsp_tx_irq_handler(int irq, void *dev_id)
 {
 	struct omap_mcbsp *mcbsp_tx = dev_id;
@@ -745,6 +758,32 @@ int omap_mcbsp_set_io_type(unsigned int id, omap_mcbsp_io_type_t io_type)
 }
 EXPORT_SYMBOL(omap_mcbsp_set_io_type);
 
+// LGE LAB4 CH.PARK@LGE.COM 20110116 MCBSP_TX_RECOVERY
+int omap_mcbsp_recover_tx_underflow(unsigned int id){
+	struct omap_mcbsp *mcbsp;
+	unsigned int irq_status;
+	u16 w;
+	mcbsp = id_to_mcbsp_ptr(id);
+
+	if( mcbsp ){
+		irq_status = MCBSP_READ(mcbsp, IRQST);
+		w = MCBSP_READ_CACHE(mcbsp, SPCR2);
+
+		if( (irq_status & 0x18b1) && (w & 0x1)){	// if under/over flow is occured, recovery routine is working.
+			printk(KERN_ERR "irq_status 0x%x", irq_status);
+			// recover TX underflow
+			MCBSP_WRITE(mcbsp, SPCR2, w & ~((u16)0x1));
+			MCBSP_WRITE(mcbsp, IRQST, irq_status);
+			mdelay(1);
+			MCBSP_WRITE(mcbsp, SPCR2, w | ((u16)0x1));
+			return 1;
+		}
+	}
+	
+	return 0;
+}
+EXPORT_SYMBOL(omap_mcbsp_recover_tx_underflow);
+
 int omap_mcbsp_request(unsigned int id)
 {
 	struct omap_mcbsp *mcbsp;
@@ -893,11 +932,11 @@ void omap_mcbsp_start(unsigned int id, int tx, int rx)
 	idle = !((MCBSP_READ_CACHE(mcbsp, SPCR2) |
 			MCBSP_READ_CACHE(mcbsp, SPCR1)) & 1);
 
-	if (idle) {
-		/* Start the sample generator */
-		w = MCBSP_READ_CACHE(mcbsp, SPCR2);
-		MCBSP_WRITE(mcbsp, SPCR2, w | (1 << 6));
-	}
+//	if (idle) {
+//		/* Start the sample generator */
+//		w = MCBSP_READ_CACHE(mcbsp, SPCR2);
+//		MCBSP_WRITE(mcbsp, SPCR2, w | (1 << 6));
+//	}
 
 	/* Enable transmitter and receiver */
 	tx &= 1;
@@ -914,7 +953,7 @@ void omap_mcbsp_start(unsigned int id, int tx, int rx)
 	 * due to some unknown PM related, clock gating etc. reason it
 	 * is now at 500us.
 	 */
-	udelay(500);
+	mdelay(1);
 
 	if (idle) {
 		/* Start frame sync */
@@ -977,6 +1016,9 @@ void omap_mcbsp_stop(unsigned int id, int tx, int rx)
 		/* Reset the sample rate generator */
 		w = MCBSP_READ_CACHE(mcbsp, SPCR2);
 		MCBSP_WRITE(mcbsp, SPCR2, w & ~(1 << 6));
+		/* Reset frame sync */
+		w = MCBSP_READ_CACHE(mcbsp, SPCR2);
+		MCBSP_WRITE(mcbsp, SPCR2, w & ~(1 << 7));
 	}
 
 	if (cpu_is_omap34xx())

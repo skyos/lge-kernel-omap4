@@ -27,6 +27,9 @@
 #include <asm/atomic.h>
 #include <plat/omap_hwmod.h>
 #include <plat/omap_device.h>
+// Darren.Kang 2010.12.24 for cosmo-panel definition
+#include <linux/hrtimer.h>
+
 
 #define DISPC_IRQ_FRAMEDONE		(1 << 0)
 #define DISPC_IRQ_VSYNC			(1 << 1)
@@ -205,6 +208,7 @@ enum omap_dss_display_state {
 	OMAP_DSS_DISPLAY_ACTIVE,
 	OMAP_DSS_DISPLAY_SUSPENDED,
 	OMAP_DSS_DISPLAY_TRANSITION,
+	OMAP_DSS_DISPLAY_ACTIVE_NO_DRAW,
 };
 
 enum omap_dss_reset_phase {
@@ -367,9 +371,14 @@ enum omap_dsi_index {
 	DSI2 = 1,
 };
 
+#if 1	/* JamesLee :: Video Mode */
+enum omap_dsi_mode {
+	OMAP_DSI_MODE_CMD = 0,
+	OMAP_DSI_MODE_VIDEO = 1,
+};
+#endif
 void dsi_bus_lock(enum omap_dsi_index ix);
 void dsi_bus_unlock(enum omap_dsi_index ix);
-bool dsi_bus_is_locked(enum omap_dsi_index ix);
 int dsi_vc_dcs_write(enum omap_dsi_index ix, int channel,
 		u8 *data, int len);
 int dsi_vc_dcs_write_0(enum omap_dsi_index ix, int channel,
@@ -389,12 +398,19 @@ int dsi_vc_set_max_rx_packet_size(enum omap_dsi_index ix,
 int dsi_vc_send_null(enum omap_dsi_index ix, int channel);
 int dsi_vc_send_bta_sync(enum omap_dsi_index ix, int channel);
 
+int dsi_enable_dcs_cmd(struct omap_dss_device *dssdev,enum omap_dsi_index ix);
+int dsi_disable_dcs_cmd(struct omap_dss_device *dssdev,enum omap_dsi_index ix);
+
 /* Board specific data */
-#define PWM2ON			0x03
-#define PWM2OFF			0x04
-#define TOGGLE3			0x92
-#define HDMI_GPIO_60		60
-#define HDMI_GPIO_41		41
+#define PWM2ON		0x03
+#define PWM2OFF		0x04
+#define TOGGLE3		0x92
+#define DSI1_GPIO_27 27
+#define DSI2_GPIO_59 59
+#define DSI2_GPIO_104 104
+#define DSI1_GPIO_102 102
+#define HDMI_GPIO_60 60
+#define HDMI_GPIO_41 41
 #define DLP_4430_GPIO_40	40
 #define DLP_4430_GPIO_44	44
 #define DLP_4430_GPIO_45	45
@@ -439,6 +455,17 @@ struct omap_video_timings {
 	u16 vfp;	/* Vertical front porch */
 	/* Unit: line clocks */
 	u16 vbp;	/* Vertical back porch */
+#if	1	// by dongjin73.kim, parameter for Video Mode
+	u16 hsa;
+	u16 vsa;
+#endif
+};
+
+struct omap_color_conv_coef {
+	int  ry,  rcr,  rcb;
+	int  gy,  gcr,  gcb;
+	int  by,  bcr,  bcb;
+	int  full_range;
 };
 
 /* Weight coef are set as value * 1000 (if coef = 1 it is set to 1000) */
@@ -454,6 +481,24 @@ struct omap_dss_yuv2rgb_conv {
 	bool dirty;
 };
 
+#ifdef CONFIG_MACH_LGE_COSMO_DOMASTIC
+#define LGE_FW_TDMB
+#endif // CONFIG_MACH_LGE_COSMO_DOMASTIC
+
+#ifdef LGE_FW_TDMB
+struct omap_ccs_matrix {
+	s16 ry;
+	s16 rcr;
+	s16 rcb;
+	s16 gy;
+	s16 gcr;
+	s16 gcb;
+	s16 by;
+	s16 bcr;
+	s16 bcb;	
+};
+#endif // LGE_FW_TDMB
+
 #ifdef CONFIG_OMAP2_DSS_VENC
 /* Hardcoded timings for tv modes. Venc only uses these to
  * identify the mode, and does not actually use the configs
@@ -463,6 +508,12 @@ extern const struct omap_video_timings omap_dss_pal_timings;
 extern const struct omap_video_timings omap_dss_ntsc_timings;
 #endif
 
+enum omap_dss_overlay_s3d_type {
+	omap_dss_overlay_s3d_none = 0,
+	omap_dss_overlay_s3d_top_bottom = 1,
+	omap_dss_overlay_s3d_side_by_side = 2,
+	omap_dss_overlay_s3d_interlaced = 4,
+};
 struct omap_overlay_info {
 	bool enabled;
 
@@ -476,7 +527,8 @@ struct omap_overlay_info {
 	u8 rotation;
 	enum omap_dss_rotation_type rotation_type;
 	bool mirror;
-
+	int status; 
+	char  manager[16];
 	u16 pos_x;
 	u16 pos_y;
 	u16 out_width;	/* if 0, out_width == width */
@@ -488,7 +540,23 @@ struct omap_overlay_info {
 	enum device_n_buffer_type field;
 	u16 pic_height;	/* required for interlacing with cropping */
 	bool out_wb; /* true when this overlay only feeds wb pipeline */
+	enum omap_dss_overlay_s3d_type s3d_type;
+	u16 portrait_pos_x;
+	u16 portrait_pos_y;
+	u16 portrait_out_width;
+	u16 portrait_out_height;
 };
+
+#define DSI1_GPIO_27 27
+#define DSI2_GPIO_59 59
+#define DSI2_GPIO_104 104
+#define DSI1_GPIO_102 102
+#define HDMI_GPIO_60 60
+#define HDMI_GPIO_41 41
+#define DLP_4430_GPIO_40        40
+#define DLP_4430_GPIO_44        44
+#define DLP_4430_GPIO_45        45
+#define DLP_4430_GPIO_59        59
 
 struct omap_overlay {
 	struct kobject kobj;
@@ -577,38 +645,37 @@ enum omap_writeback_source_type {
 
 
 struct omap_writeback_info {
-	bool				enabled;
-	bool				info_dirty;
-	enum omap_writeback_source	source;
-	enum omap_writeback_source_type source_type;
-	unsigned long			width;
-	unsigned long			height;
-	unsigned long			out_width;
-	unsigned long			out_height;
-	enum omap_color_mode		dss_mode;
-	enum omap_writeback_capturemode capturemode;
-	unsigned long			paddr;
-	unsigned long			puv_addr;
-	u32				line_skip;
+		bool					enabled;
+		bool					info_dirty;
+		enum omap_writeback_source		source;
+		enum omap_writeback_source_type 	source_type;
+		unsigned long				width;
+		unsigned long				height;
+		unsigned long				out_width;
+		unsigned long				out_height;
+		enum omap_color_mode			dss_mode;
+		enum omap_writeback_capturemode 	capturemode;
+		unsigned long				paddr;
+		/* NV12 support*/
+		unsigned long				puv_addr;
+		unsigned int				line_skip;
+
 };
 
 struct omap_writeback {
-	struct kobject		kobj;
-	struct list_head	list;
-	bool			enabled;
-	bool			info_dirty;
-	bool			first_time;
-
+	struct kobject kobj;
+	struct list_head list;
+	bool								enabled;
+	bool								info_dirty;
+	bool								first_time;
 	/* mutex to control access to wb data */
 	struct mutex lock;
 	struct omap_writeback_info info;
-
 	bool (*check_wb)(struct omap_writeback *wb);
 
-	int (*set_wb_info)(struct omap_writeback *wb,
-		struct omap_writeback_info *info);
-	void (*get_wb_info)(struct omap_writeback *wb,
-		struct omap_writeback_info *info);
+	int (*set_wb_info)(struct omap_writeback *wb, struct omap_writeback_info *info);
+	void (*get_wb_info)(struct omap_writeback *wb, struct omap_writeback_info *info);
+
 };
 
 struct s3d_disp_info {
@@ -656,7 +723,9 @@ struct omap_dss_device {
 			u8 data1_pol;
 			u8 data2_lane;
 			u8 data2_pol;
-
+#if 1	/* JamesLee :: Video Mode */
+			u8 num_data_lanes;
+#endif
 			struct {
 				u16 regn;
 				u16 regm;
@@ -668,6 +737,21 @@ struct omap_dss_device {
 				u16 lck_div;
 				u16 pck_div;
 			} div;
+
+			bool ext_te;
+			u8 ext_te_gpio;
+#if 1	/* JamesLee :: Video Mode */
+                        enum omap_dsi_mode mode;
+ 
+                        struct {
+                                u16 hbp;
+                                u16 hfp;
+                                u16 hsa;
+                                u16 vbp;
+                                u16 vfp;
+                                u16 vsa;
+                        } timings;
+#endif
 		} dsi;
 
 		struct {
@@ -685,14 +769,18 @@ struct omap_dss_device {
 
 		enum omap_panel_config config;
 		struct s3d_disp_info s3d_info;
+#if defined (CONFIG_MACH_LGE_CX2) 
 		u32 width_in_mm;
 		u32 height_in_mm;
+#endif
 	} panel;
 
 	struct {
 		u8 pixel_size;
 		struct rfbi_timings rfbi_timings;
 	} ctrl;
+
+	int reset_gpio;
 
 	int max_backlight_level;
 
@@ -720,6 +808,10 @@ struct omap_dss_device {
 
 	/* support for scheduling subsequent update */
 	struct omap_dss_sched_update sched_update;
+
+#ifdef LGE_FW_TDMB
+	int (*set_ccs)(struct omap_dss_device * dssdev, struct omap_ccs_matrix * ccs_info);
+#endif // LGE_FW_TDMB
 
 	/* platform specific  */
 	int (*platform_enable)(struct omap_dss_device *dssdev);
@@ -795,6 +887,7 @@ struct omap_dss_driver {
 	/* resets display.  returns status (of reenabling the display).*/
 	int (*reset)(struct omap_dss_device *dssdev,
 					enum omap_dss_reset_phase phase);
+	int (*hpd_disable)(struct omap_dss_device *dssdev);
 
 	/* S3D specific */
 	/* Used for displays that can switch 3D mode on/off
@@ -808,6 +901,7 @@ struct omap_dss_driver {
 	 *hence we add capability to choose the most optimal one given a source
 	 *Returns non-zero if the type was not supported*/
 	int (*set_s3d_disp_type)(struct omap_dss_device *dssdev, struct s3d_disp_info *info);
+	int (*get_s3d_disp_type)(struct omap_dss_device *dssdev, struct s3d_disp_info *info);
 };
 
 struct pico_platform_data {
@@ -867,9 +961,15 @@ typedef void (*omap_dispc_isr_t) (void *arg, u32 mask);
 int omap_dispc_register_isr(omap_dispc_isr_t isr, void *arg, u32 mask);
 int omap_dispc_unregister_isr(omap_dispc_isr_t isr, void *arg, u32 mask);
 
+bool dispc_go_busy(enum omap_channel channel);
+void dispc_go(enum omap_channel channel);
+
 int omap_dispc_wait_for_irq_timeout(u32 irqmask, unsigned long timeout);
 int omap_dispc_wait_for_irq_interruptible_timeout(u32 irqmask,
 			unsigned long timeout);
+void dispc_get_default_color_conv_coef(struct omap_color_conv_coef *ct);
+void dispc_set_color_conv_coef(enum omap_plane plane,
+		const struct omap_color_conv_coef *ct);
 
 #define to_dss_driver(x) container_of((x), struct omap_dss_driver, driver)
 #define to_dss_device(x) container_of((x), struct omap_dss_device, dev)
@@ -882,7 +982,7 @@ void omapdss_dsi_vc_enable_hs(enum omap_dsi_index ix, int channel,
 int omapdss_dsi_enable_te(struct omap_dss_device *dssdev, bool enable);
 
 int omap_dsi_sched_update_lock(struct omap_dss_device *dssdev,
-				u16 x, u16 y, u16 w, u16 h, bool sched_only);
+					u16 x, u16 y, u16 w, u16 h);
 int omap_dsi_prepare_update(struct omap_dss_device *dssdev,
 			u16 *x, u16 *y, u16 *w, u16 *h,
 			bool enlarge_update_area);
@@ -915,5 +1015,40 @@ int omap_rfbi_update(struct omap_dss_device *dssdev,
 
 void change_base_address(int id, u32 p_uv_addr);
 bool is_hdmi_interlaced(void);
+
+// Darren.Kang 2010.12.24 Moved from panel-cosmo.c/omaplfb_linux.c [ST]
+struct cosmo_panel_data {
+		struct backlight_device *bldev;
+
+		unsigned long	hw_guard_end;	/* next value of jiffies when we can
+						 * issue the next sleep in/out command
+						 */
+		unsigned long	hw_guard_wait;	/* max guard time in jiffies */
+
+		struct omap_dss_device *dssdev;
+
+		bool enabled;
+		u8 rotate;
+		bool mirror;
+
+		bool te_enabled;
+		bool use_ext_te;
+		struct completion te_completion;
+
+		bool use_dsi_bl;
+
+		bool intro_printed;
+
+		struct workqueue_struct *esd_wq;
+		struct delayed_work esd_work;
+
+		struct i2c_client *barrier_i2c[2];
+		struct hrtimer	   timer;
+
+		bool barrier_enabled;
+
+};
+// Darren.Kang 2010.12.24 Moved from panel-cosmo.c/omaplfb_linux.c [END]
+
 
 #endif

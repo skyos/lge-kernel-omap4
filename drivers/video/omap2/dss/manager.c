@@ -398,7 +398,6 @@ struct overlay_cache_data {
 	u16 width;
 	u16 height;
 	enum omap_color_mode color_mode;
-	struct omap_dss_yuv2rgb_conv *yuv2rgb_conv;
 	u8 rotation;
 	enum omap_dss_rotation_type rotation_type;
 	bool mirror;
@@ -523,6 +522,7 @@ static int dss_mgr_wait_for_vsync(struct omap_overlay_manager *mgr)
 	if (mgr->device->state != OMAP_DSS_DISPLAY_ACTIVE)
 		return 0;
 
+#if 1
 	if (mgr->device->type == OMAP_DISPLAY_TYPE_VENC)
 		irq = DISPC_IRQ_EVSYNC_ODD;
 	else if (mgr->device->type == OMAP_DISPLAY_TYPE_HDMI)
@@ -531,8 +531,8 @@ static int dss_mgr_wait_for_vsync(struct omap_overlay_manager *mgr)
 			&& (mgr->device->channel == OMAP_DSS_CHANNEL_LCD))
 		irq = DISPC_IRQ_FRAMEDONE;
 	else if ((mgr->device->type == OMAP_DISPLAY_TYPE_DSI)
-			&& (mgr->device->channel == OMAP_DSS_CHANNEL_LCD2))
-		irq = DISPC_IRQ_FRAMEDONE2;
+			&& (mgr->device->channel == OMAP_DSS_CHANNEL_LCD2))		
+		irq = DISPC_IRQ_VSYNC2;//irq = DISPC_IRQ_FRAMEDONE2 ->DISPC_IRQ_VSYNC2
 	else if ((mgr->device->type == OMAP_DISPLAY_TYPE_DPI)
 			&& (mgr->device->channel == OMAP_DSS_CHANNEL_LCD))
 			irq = DISPC_IRQ_VSYNC;
@@ -540,6 +540,10 @@ static int dss_mgr_wait_for_vsync(struct omap_overlay_manager *mgr)
 			&& (mgr->device->channel == OMAP_DSS_CHANNEL_LCD2))
 			irq = DISPC_IRQ_VSYNC2;
 	return omap_dispc_wait_for_irq_interruptible_timeout(irq, timeout);
+#else
+	return 0;
+#endif
+
 }
 
 static int dss_mgr_wait_for_go(struct omap_overlay_manager *mgr)
@@ -630,11 +634,14 @@ int dss_mgr_wait_for_go_ovl(struct omap_overlay *ovl)
 		return 0;
 
 	dssdev = ovl->manager->device;
-
 	if (!dssdev || dssdev->state != OMAP_DSS_DISPLAY_ACTIVE)
 		return 0;
 
 	channel = dssdev->channel;
+
+	if (!dssdev || dssdev->state != OMAP_DSS_DISPLAY_ACTIVE)
+		return 0;
+
 	if (dssdev->type == OMAP_DISPLAY_TYPE_VENC
 		|| dssdev->type == OMAP_DISPLAY_TYPE_HDMI) {
 		irq = DISPC_IRQ_EVSYNC_ODD | DISPC_IRQ_EVSYNC_EVEN;
@@ -775,7 +782,7 @@ static int configure_overlay(enum omap_plane plane)
 		if (wb->enabled && omap_dss_check_wb(wb, plane, c->channel))
 			source_of_wb = true;
 	}
-
+	
 	x = c->pos_x;
 	y = c->pos_y;
 	w = c->width;
@@ -806,9 +813,6 @@ static int configure_overlay(enum omap_plane plane)
 			bpp = 8;
 			break;
 
-		case OMAP_DSS_COLOR_CLUT2:
-		case OMAP_DSS_COLOR_CLUT4:
-		case OMAP_DSS_COLOR_CLUT8:
 		case OMAP_DSS_COLOR_RGB16:
 		case OMAP_DSS_COLOR_ARGB16:
 		case OMAP_DSS_COLOR_YUV2:
@@ -887,7 +891,6 @@ static int configure_overlay(enum omap_plane plane)
 			w, h,
 			outw, outh,
 			c->color_mode,
-			c->yuv2rgb_conv,
 			c->ilace, x_decim, y_decim, three_tap,
 			c->rotation_type,
 			c->rotation,
@@ -975,6 +978,9 @@ static int configure_dispc(void)
 			if (oc->manual_update && !mc->do_manual_update)
 				continue;
 
+#ifdef CONFIG_MACH_LGE_COSMOPOLITAN
+			if(i)
+#endif
 			if (mgr_busy[oc->channel]) {
 				busy = true;
 				continue;
@@ -1320,6 +1326,44 @@ static int omap_dss_mgr_apply(struct omap_overlay_manager *mgr)
 	struct writeback_cache_data *wbc;
 	DSSDBG("omap_dss_mgr_apply(%s)\n", mgr->name);
 
+	#if defined(CONFIG_MACH_LGE_COSMOPOLITAN)
+		if(mgr->device && mgr->device->driver && mgr->device->driver->enable_s3d) {
+			enum omap_dss_overlay_s3d_type s3d_type = omap_dss_overlay_s3d_none;
+			struct s3d_disp_info s3d_info;
+			for (i = 0; i < omap_dss_get_num_overlays(); i++) {
+				ovl = omap_dss_get_overlay(i);
+				if ( !ovl->info.enabled || ovl->manager != mgr || ovl->info.out_wb )
+					continue;
+				s3d_type |= ovl->info.s3d_type;
+			}
+			switch ( s3d_type )
+			{
+			case omap_dss_overlay_s3d_top_bottom:
+				s3d_info.type = S3D_DISP_OVERUNDER;
+				s3d_info.sub_samp = S3D_DISP_SUB_SAMPLE_NONE;
+				break;
+			case omap_dss_overlay_s3d_side_by_side:
+				s3d_info.type = S3D_DISP_SIDEBYSIDE;
+				s3d_info.sub_samp = S3D_DISP_SUB_SAMPLE_H;
+				break;
+			case omap_dss_overlay_s3d_interlaced:
+				s3d_info.type = S3D_DISP_COL_IL;
+				break;
+			default:
+				s3d_info.type = S3D_DISP_NONE;
+				break;
+			}
+			if ( s3d_info.type== S3D_DISP_NONE )
+				mgr->device->driver->enable_s3d(mgr->device, 0);
+			else
+			{
+				if(mgr->device->driver->set_s3d_disp_type)
+					mgr->device->driver->set_s3d_disp_type(mgr->device, &s3d_info);
+				mgr->device->driver->enable_s3d(mgr->device, 1);
+			}
+		}
+	#endif
+
 	if (!dss_get_mainclk_state()) {
 		DSSERR("mainclk disabled while trying"
 			"mgr_apply, returning\n");
@@ -1381,9 +1425,6 @@ static int omap_dss_mgr_apply(struct omap_overlay_manager *mgr)
 		oc->height = ovl->info.height;
 		oc->pic_height = ovl->info.pic_height;
 		oc->color_mode = ovl->info.color_mode;
-
-		if (ovl->info.yuv2rgb_conv.dirty)
-			oc->yuv2rgb_conv = &ovl->info.yuv2rgb_conv;
 
 		oc->rotation = ovl->info.rotation;
 		oc->rotation_type = ovl->info.rotation_type;
@@ -1514,7 +1555,7 @@ static int omap_dss_mgr_apply(struct omap_overlay_manager *mgr)
 	}
 
 	r = 0;
-
+	dss_clk_enable(DSS_CLK_ICK | DSS_CLK_FCK1);
 	if (!dss_cache.irq_enabled) {
 		r = omap_dispc_register_isr(dss_apply_irq_handler, NULL,
 				DISPC_IRQ_VSYNC	| DISPC_IRQ_EVSYNC_ODD |
@@ -1618,9 +1659,6 @@ int omap_dss_wb_apply(struct omap_overlay_manager *mgr, struct omap_writeback *w
 		oc->min_y_decim = ovl->info.min_y_decim;
 		oc->max_y_decim = ovl->info.max_y_decim;
 
-		if (ovl->info.yuv2rgb_conv.dirty)
-			oc->yuv2rgb_conv = &ovl->info.yuv2rgb_conv;
-
 		oc->replication =
 			dss_use_replication(dssdev, ovl->info.color_mode);
 
@@ -1677,6 +1715,15 @@ int omap_dss_wb_apply(struct omap_overlay_manager *mgr, struct omap_writeback *w
 					&oc->burst_size, &oc->fifo_low,
 					&oc->fifo_high);
 	}
+
+#if defined(CONFIG_MACH_LGE_COSMOPOLITAN)
+	if (!dss_get_mainclk_state()) {
+		DSSERR("mainclk disabled while trying"
+			"mgr_apply, returning\n");
+		spin_unlock_irqrestore(&dss_cache.lock, flags);         
+		return 0;
+	}
+#endif
 
 	configure_dispc();
 

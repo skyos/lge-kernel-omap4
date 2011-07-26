@@ -734,8 +734,11 @@ add_children(struct twl4030_platform_data *pdata, unsigned long features)
 	}
 
 	if (twl_has_pwrbutton()) {
+//		child = add_child(1, "twl4030_pwrbutton",
+//				NULL, 0, true, pdata->irq_base + 8 + 0, 0);
 		child = add_child(1, "twl4030_pwrbutton",
-				NULL, 0, true, pdata->irq_base + 8 + 0, 0);
+				NULL, 0, true, pdata->irq_base + 0 + 0, 0);
+
 		if (IS_ERR(child))
 			return PTR_ERR(child);
 	}

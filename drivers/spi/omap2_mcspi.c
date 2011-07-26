@@ -3,7 +3,7 @@
  *
  * Copyright (C) 2005, 2006 Nokia Corporation
  * Author:	Samuel Ortiz <samuel.ortiz@nokia.com> and
- *		Juha Yrjölä <juha.yrjola@nokia.com>
+ *		Juha Yrj??<juha.yrjola@nokia.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,6 +34,7 @@
 #include <linux/io.h>
 #include <linux/slab.h>
 #include <linux/pm_runtime.h>
+#include <linux/wakelock.h>
 
 #include <linux/spi/spi.h>
 
@@ -169,6 +170,7 @@ static struct reg_type ch_reg_type[] = {
 #endif
 
 static struct workqueue_struct *omap2_mcspi_wq;
+static struct wake_lock spi_lock;	//20110419 TI cliff.lee
 
 #define MOD_REG_BIT(val, mask, set) do { \
 	if (set) \
@@ -285,7 +287,24 @@ static void omap2_mcspi_set_enable(const struct spi_device *spi, int enable)
 	/* Flash post-writes */
 	mcspi_read_cs_reg(spi, OMAP2_MCSPI_CHCTRL0);
 }
+// ebs
+#ifndef TEDCHO_IPC  // by eunae.kim SPI clock issue 2010.01.07
 
+static void omap2_mcspi_set_dma_req_both(const struct spi_device *spi,
+		int is_read, int enable)
+{
+	u32 l, rw;
+
+	l = mcspi_cached_chconf0(spi);
+	
+	rw = OMAP2_MCSPI_CHCONF_DMAR | OMAP2_MCSPI_CHCONF_DMAW;	
+
+	MOD_REG_BIT(l, rw, enable);
+	mcspi_write_chconf0(spi, l);
+}
+#endif
+
+// ebs
 static void omap2_mcspi_force_cs(struct spi_device *spi, int cs_active)
 {
 	u32 l;
@@ -565,17 +584,57 @@ omap2_mcspi_txrx_dma(struct spi_device *spi, struct spi_transfer *xfer)
 				mcspi_write_cs_reg(spi, OMAP2_MCSPI_TX0, 0);
 		}
 	}
+#if 1 //  DMA priority set
+ omap_dma_set_global_params(DMA_DEFAULT_ARB_RATE, 0x20, 1); // SPI_IPC
+ omap_dma_set_prio_lch(mcspi_dma->dma_tx_channel, 0, DMA_CH_PRIO_HIGH);  
+ omap_dma_set_prio_lch(mcspi_dma->dma_rx_channel, DMA_CH_PRIO_HIGH, 0); 
+ // omap_set_dma_prefetch(mcspi_dma->dma_tx_channel, 1); 
+ // omap_set_dma_write_mode(mcspi_dma->dma_tx_channel, OMAP_DMA_WRITE_POSTED);
+#endif
 
-	if (rx != NULL) {
-		omap_start_dma(mcspi_dma->dma_rx_channel);
-		omap2_mcspi_set_dma_req(spi, 1, 1);
-	}
+// ebs
+#ifndef TEDCHO_IPC
+if( (tx != NULL) && (rx != NULL) )
+{
+	//omap_start_dma_pre(mcspi_dma->dma_tx_channel);
+	//omap_start_dma_pre(mcspi_dma->dma_rx_channel);	
+	//omap_start_dma_post(mcspi_dma->dma_tx_channel, mcspi_dma->dma_rx_channel);	
 
+
+	omap_start_dma(mcspi_dma->dma_tx_channel);
+	omap_start_dma(mcspi_dma->dma_rx_channel);
+	
+	//omap2_mcspi_set_dma_req(spi, 1, 1);
+	//omap2_mcspi_set_dma_req(spi, 0, 1);
+	omap2_mcspi_set_dma_req_both(spi, 1, 1);
+
+	
+}
+else
+{
 	if (tx != NULL) {
 		omap_start_dma(mcspi_dma->dma_tx_channel);
 		omap2_mcspi_set_dma_req(spi, 0, 1);
 	}
 
+	if (rx != NULL) {
+		omap_start_dma(mcspi_dma->dma_rx_channel);
+		omap2_mcspi_set_dma_req(spi, 1, 1);
+	}
+}
+#else
+	if (tx != NULL) {
+		omap_start_dma(mcspi_dma->dma_tx_channel);
+		omap2_mcspi_set_dma_req(spi, 0, 1);
+	}
+
+	if (rx != NULL) {
+		omap_start_dma(mcspi_dma->dma_rx_channel);
+		omap2_mcspi_set_dma_req(spi, 1, 1);
+	}
+#endif
+
+// ebs
 	if (tx != NULL) {
 		wait_for_completion(&mcspi_dma->dma_tx_completion);
 
@@ -1078,6 +1137,8 @@ static void omap2_mcspi_work(struct work_struct *work)
 
 	if (omap2_mcspi_enable_clocks(mcspi) < 0)
 		return;
+		
+	wake_lock_timeout(&spi_lock, 1*HZ);	//20110419 TI cliff.lee
 
 	spin_lock_irq(&mcspi->lock);
 
@@ -1206,6 +1267,7 @@ static void omap2_mcspi_work(struct work_struct *work)
 	spin_unlock_irq(&mcspi->lock);
 
 	omap2_mcspi_disable_clocks(mcspi);
+	wake_unlock(&spi_lock);	//20110419 TI cliff.lee	
 }
 
 static int omap2_mcspi_transfer(struct spi_device *spi, struct spi_message *m)
@@ -1467,6 +1529,12 @@ static int __exit omap2_mcspi_remove(struct platform_device *pdev)
 
 	omap2_mcspi_disable_clocks(mcspi);
 	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	
+	if (!r) {
+  	printk(KERN_ERR "No IO resource\n");
+	 return -ENODEV;
+	}
+
 	release_mem_region(r->start, (r->end - r->start) + 1);
 
 	base = mcspi->base;
@@ -1500,6 +1568,8 @@ static int __init omap2_mcspi_init(void)
 				omap2_mcspi_driver.driver.name);
 	if (omap2_mcspi_wq == NULL)
 		return -1;
+
+	wake_lock_init(&spi_lock, WAKE_LOCK_SUSPEND, "spi_wake_lock");	//20110419 TI cliff.lee
 	return platform_driver_probe(&omap2_mcspi_driver, omap2_mcspi_probe);
 }
 subsys_initcall(omap2_mcspi_init);
@@ -1509,6 +1579,7 @@ static void __exit omap2_mcspi_exit(void)
 	platform_driver_unregister(&omap2_mcspi_driver);
 
 	destroy_workqueue(omap2_mcspi_wq);
+	wake_lock_destroy(&spi_lock);	//20110419 TI cliff.lee
 }
 module_exit(omap2_mcspi_exit);
 

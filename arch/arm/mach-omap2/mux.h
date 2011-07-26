@@ -23,6 +23,7 @@
 #define OMAP_MUX_TERMINATOR	0xffff
 
 /* 34xx/44xx mux mode options for each pin. See TRM for options */
+#define OMAP_MUX_MODE_MASK  0x7
 #define OMAP_MUX_MODE0      0
 #define OMAP_MUX_MODE1      1
 #define OMAP_MUX_MODE2      2
@@ -170,8 +171,9 @@ int omap_mux_init_gpio(int gpio, int val);
  * @val:		Options for the mux register value
  */
 int omap_mux_init_signal(const char *muxname, int val);
+u16 omap_mux_read_signal(const char *muxname); 
 int omap_mux_enable_wakeup(const char *muxname);
-
+int omap_mux_disable_wakeup(const char *muxname); 
 #else
 
 static inline int omap_mux_init_gpio(int gpio, int val)
@@ -183,6 +185,10 @@ static inline int omap_mux_init_signal(char *muxname, int val)
 	return 0;
 }
 static inline int omap_mux_enable_wakeup(char *muxname)
+{
+	return 0;
+}
+static inline int omap_mux_disable_wakeup(char *muxname)
 {
 	return 0;
 }

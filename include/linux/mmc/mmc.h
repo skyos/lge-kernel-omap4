@@ -203,6 +203,8 @@ struct _mmc_csd {
  */
 #define MMC_CARD_BUSY	0x80000000	/* Card Power up status bit */
 
+#define MMC_ACCESS_MODE      0x40000000     /* Select card access mode(Byte/Sector) 10K0419 */
+
 /*
  * Card Command Classes (CCC)
  */

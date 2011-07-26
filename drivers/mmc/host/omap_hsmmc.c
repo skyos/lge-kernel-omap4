@@ -43,6 +43,9 @@
 #include <plat/board.h>
 #include <plat/mmc.h>
 #include <plat/cpu.h>
+#ifdef CONFIG_MACH_LGE_MMC_ALWAYSON 
+#include <linux/i2c/twl.h>
+#endif
 
 #define VS18			(1 << 26)
 #define VS30			(1 << 25)
@@ -211,10 +214,13 @@ struct omap_hsmmc_host {
 	int			use_reg;
 	int			req_in_progress;
 	int			tput_constraint;
-
+#ifdef CONFIG_MACH_LGE_MMC_ALWAYSON 
+	int 		equip_status;
+#endif
 	struct	omap_mmc_platform_data	*pdata;
 };
 
+#ifndef CONFIG_MACH_LGE_MMC_COVER
 static int omap_hsmmc_card_detect(struct device *dev, int slot)
 {
 	struct omap_mmc_platform_data *mmc = dev->platform_data;
@@ -239,6 +245,69 @@ static int omap_hsmmc_get_cover_state(struct device *dev, int slot)
 	return !gpio_get_value_cansleep(mmc->slots[0].switch_pin);
 }
 
+int omap_hsmmc_get_detect_pin_state(struct omap_hsmmc_host *host)
+{
+	// returns 1 in case that card is IN
+	// returns 0 in case that card is OUT
+	return omap_hsmmc_get_cover_state(host->dev, 0);
+}
+#else
+// check detect pin and cover state of sdcard detection 
+static int omap_hsmmc_card_detect(struct device *dev, int slot)
+{
+#if defined(CONFIG_MACH_LGE_MMC_ENHANCED_COVER) && defined(CONFIG_MACH_LGE_MMC_COVER)	
+	static int old_status=1; // 1: inserted 0:removed
+	int tmp_old_status=old_status;	
+	struct omap_mmc_platform_data *mmc = dev->platform_data;
+	//printk("\nsdcard status(old_status,det,cover) = (%d,%d,%d)\n",old_status,!gpio_get_value_cansleep(mmc->slots[0].switch_pin),!gpio_get_value_cansleep(mmc->slots[0].sd_cover));
+
+	/* NOTE: assumes card detect signal is active-low */
+	old_status = ((!gpio_get_value_cansleep(mmc->slots[0].switch_pin))&&(!gpio_get_value_cansleep(mmc->slots[0].sd_cover)));		
+
+	return (((tmp_old_status)||	(!gpio_get_value_cansleep(mmc->slots[0].sd_cover)))&&(!gpio_get_value_cansleep(mmc->slots[0].switch_pin)));
+
+#else		
+	struct omap_mmc_platform_data *mmc = dev->platform_data;
+	printk("\nsdcard status(det,cover) = (%d,%d)\n",!gpio_get_value_cansleep(mmc->slots[0].switch_pin),!gpio_get_value_cansleep(mmc->slots[0].sd_cover));
+
+	/* NOTE: assumes card detect signal is active-low */
+	return ((!gpio_get_value_cansleep(mmc->slots[0].switch_pin))&&(!gpio_get_value_cansleep(mmc->slots[0].sd_cover)));  	
+#endif	
+}
+// check wp pin
+static int omap_hsmmc_get_wp(struct device *dev, int slot)
+{
+	struct omap_mmc_platform_data *mmc = dev->platform_data;
+
+	/* NOTE: assumes write protect signal is active-high */
+	return gpio_get_value_cansleep(mmc->slots[0].gpio_wp);
+}
+// check  cover pin
+static int omap_hsmmc_get_cover_state(struct device *dev, int slot)
+{
+	struct omap_mmc_platform_data *mmc = dev->platform_data;
+
+	/* NOTE: assumes card detect signal is active-low */
+	//return !gpio_get_value_cansleep(mmc->slots[0].sd_cover/*switch_pin*/);
+	return omap_hsmmc_card_detect(dev, 0);
+}
+
+// return card detect (cover+det pin) for global
+int omap_hsmmc_get_detect_pin_state(struct omap_hsmmc_host *host)
+{
+	// returns 1 in case that card is IN
+	// returns 0 in case that card is OUT
+	//return omap_hsmmc_get_cover_state(host->dev, 0);
+#if defined(CONFIG_MACH_LGE_MMC_ENHANCED_COVER) && defined(CONFIG_MACH_LGE_MMC_COVER)	
+	struct omap_mmc_platform_data *mmc = host->dev->platform_data;
+
+	return (!gpio_get_value_cansleep(mmc->slots[0].switch_pin));
+#else	
+	return omap_hsmmc_card_detect(host->dev, 0);
+#endif	
+}
+#endif
+
 #ifdef CONFIG_PM
 
 static int omap_hsmmc_suspend_cdirq(struct device *dev, int slot)
@@ -246,12 +315,22 @@ static int omap_hsmmc_suspend_cdirq(struct device *dev, int slot)
 	struct omap_mmc_platform_data *mmc = dev->platform_data;
 
 	disable_irq(mmc->slots[0].card_detect_irq);
+#if defined(CONFIG_MACH_LGE_MMC_ENHANCED_COVER) && defined(CONFIG_MACH_LGE_MMC_COVER)	
+
+	disable_irq(mmc->slots[0].card_detect_irq_by_data3pin);
+#endif	
+
+	
 	return 0;
 }
 
 static int omap_hsmmc_resume_cdirq(struct device *dev, int slot)
 {
 	struct omap_mmc_platform_data *mmc = dev->platform_data;
+
+#if defined(CONFIG_MACH_LGE_MMC_ENHANCED_COVER) && defined(CONFIG_MACH_LGE_MMC_COVER)	
+	enable_irq(mmc->slots[0].card_detect_irq_by_data3pin);
+#endif	
 
 	enable_irq(mmc->slots[0].card_detect_irq);
 	return 0;
@@ -266,6 +345,146 @@ static int omap_hsmmc_resume_cdirq(struct device *dev, int slot)
 
 #ifdef CONFIG_REGULATOR
 
+#ifdef CONFIG_MACH_LGE_MMC_REFRESH	
+int omap_hsmmc_regulator_force_refresh(struct mmc_host *mmc)
+{
+	
+	extern int regulator_force_refresh(struct regulator *regulator);
+	struct omap_hsmmc_host *host = mmc_priv(mmc);
+	printk(KERN_DEBUG "[microSD] omap_hsmmc_regulator_force_refresh() is done\n");
+	return regulator_force_refresh(host->vcc);
+}
+#endif	//CONFIG_MACH_LGE_MMC_REFRESH
+
+#ifdef CONFIG_MACH_LGE_MMC_ALWAYSON
+int sdpower_status = 0;  // 0: OFF, 1:ON
+
+static void regulator_direct_control(int on_off)
+{
+	if (on_off == 1) // request ON
+	{
+		twl_i2c_write_u8(0x0D, 0x01, 0x98);
+		twl_i2c_write_u8(0x0D, 0x3F, 0x99);
+		twl_i2c_write_u8(0x0D, 0x21, 0x9A);		
+	}
+	else if( on_off == 0 ) // request OFF
+	{
+		twl_i2c_write_u8(0x0D, 0x00, 0x98);
+		twl_i2c_write_u8(0x0D, 0x00, 0x99);//twl_i2c_write_u8(0x0D, 0x3F, 0x99);
+		twl_i2c_write_u8(0x0D, 0x00, 0x9A); 		
+	}
+}
+
+static int omap_hsmmc_1_set_power(struct device *dev, int slot, int power_on,int vdd)
+{
+	struct omap_hsmmc_host *host =
+		platform_get_drvdata(to_platform_device(dev));
+	int ret;
+
+	int pin_status = 0;
+
+	pin_status = omap_hsmmc_get_detect_pin_state(host);
+
+	//printk("\n\n###############>>> set power function called pin (status:%d),(current:%d),request:%d \n\n",pin_status,sdpower_status,power_on);
+
+	if(pin_status!=1) // sdcard NOT present
+	{
+
+		if(sdpower_status) // check current status : ON
+		{
+			if (mmc_slot(host).before_set_reg)
+				mmc_slot(host).before_set_reg(dev, slot, 0, 0);
+
+			regulator_direct_control(0);	
+
+			ret = mmc_regulator_set_ocr(host->vcc, 0);		
+			
+			if (!ret) 
+				sdpower_status = 0;
+
+			if (mmc_slot(host).after_set_reg)
+			mmc_slot(host).after_set_reg(dev, slot, 0, 0);		
+
+			//printk("\n(SD not present)+++++++++++++++++++++++> current status : ON so turn off the regulator\n");
+			
+			//if(ret != 0)
+			//	printk("\n!!!!!!!!!!!!!!!!!>>>>>>>>>>>>>>>>>>  SET OCR fail\n");
+			
+			return ret;
+
+		}
+		else				// check current status : OFF
+		{
+			//printk("\n(SD not present)+++++++++++++++++++++++> current status : OFF so skip\n");
+			return 0;
+		}
+			
+	}
+
+
+	if((host->suspended) != 1) // not suspend case! do control regulator ON,OFF regularly
+	{
+		//printk("\n++++++++++++++++++> this is NOT suspend case");
+		if (mmc_slot(host).before_set_reg)
+			mmc_slot(host).before_set_reg(dev, slot, power_on, vdd);
+
+		if (power_on)	// on
+		{
+			//printk("		regulator ON\n");
+			
+			regulator_direct_control(1);
+
+			ret = mmc_regulator_set_ocr(host->vcc, vdd);
+			
+			if (!ret) 
+				sdpower_status = 1;
+			
+		}
+		else			// off
+		{
+			//printk("		regulator OFF\n");
+
+			regulator_direct_control(0);
+
+			ret = mmc_regulator_set_ocr(host->vcc, 0);
+
+			if (!ret) 
+				sdpower_status = 0;
+						
+		}
+
+		if (mmc_slot(host).after_set_reg)
+			mmc_slot(host).after_set_reg(dev, slot, power_on, vdd);
+
+	}
+	else	// suspend case! ON is allowed , OFF is not allowed
+	{
+		//printk("\n++++++++++++++++++> this is suspend case DO NOT HANDLE regulator");
+
+		if(power_on)
+		{
+			if (mmc_slot(host).before_set_reg)
+				mmc_slot(host).before_set_reg(dev, slot, power_on, vdd);
+
+			//printk("	except regulator ON control in suspend state, SO do turn on regulator!!\n");
+
+			regulator_direct_control(1);
+
+			ret = mmc_regulator_set_ocr(host->vcc, vdd);
+
+			if (!ret) 
+				sdpower_status = 1;
+						
+			if (mmc_slot(host).after_set_reg)
+				mmc_slot(host).after_set_reg(dev, slot, power_on, vdd);
+		}
+
+		ret = 0;
+	}
+	
+	return ret;
+}
+#else
 static int omap_hsmmc_1_set_power(struct device *dev, int slot, int power_on,
 				  int vdd)
 {
@@ -286,6 +505,7 @@ static int omap_hsmmc_1_set_power(struct device *dev, int slot, int power_on,
 
 	return ret;
 }
+#endif
 
 static int omap_hsmmc_23_set_power(struct device *dev, int slot, int power_on,
 				   int vdd)
@@ -505,6 +725,7 @@ static inline int omap_hsmmc_have_reg(void)
 
 #endif
 
+#ifndef CONFIG_MACH_LGE_MMC_COVER
 static int omap_hsmmc_gpio_init(struct omap_mmc_platform_data *pdata)
 {
 	int ret;
@@ -547,7 +768,68 @@ err_free_sp:
 		gpio_free(pdata->slots[0].switch_pin);
 	return ret;
 }
+#else
+static int omap_hsmmc_gpio_init(struct omap_mmc_platform_data *pdata)
+{
+	int ret;
 
+	if (gpio_is_valid(pdata->slots[0].switch_pin)) {
+		if (0/*pdata->slots[0].cover*/)
+			pdata->slots[0].get_cover_state =
+					omap_hsmmc_get_cover_state;
+		else
+			pdata->slots[0].card_detect = omap_hsmmc_card_detect;
+		pdata->slots[0].card_detect_irq =
+				gpio_to_irq(pdata->slots[0].sd_cover/*pdata->slots[0].switch_pin*/);
+		ret = gpio_request(pdata->slots[0].sd_cover/*pdata->slots[0].switch_pin*/, "mmc_cd");
+		if (ret)
+			return ret;
+		ret = gpio_direction_input(pdata->slots[0].sd_cover/*pdata->slots[0].switch_pin*/);
+		if (ret)
+			goto err_free_sp;
+
+#if defined(CONFIG_MACH_LGE_MMC_ENHANCED_COVER) && defined(CONFIG_MACH_LGE_MMC_COVER)
+
+		if (pdata->slots[0].cover)
+		{
+			pdata->slots[0].card_detect_irq_by_data3pin =
+					gpio_to_irq(pdata->slots[0].switch_pin);
+			ret = gpio_request(pdata->slots[0].switch_pin, "mmc_cd_byd3");
+			if (ret)
+				return ret;
+			ret = gpio_direction_input(pdata->slots[0].switch_pin);
+			if (ret)
+				goto err_free_sp;
+		}
+
+#endif	
+
+		
+	} else
+		pdata->slots[0].switch_pin = -EINVAL;
+
+	if (gpio_is_valid(pdata->slots[0].gpio_wp)) {
+		pdata->slots[0].get_ro = omap_hsmmc_get_wp;
+		ret = gpio_request(pdata->slots[0].gpio_wp, "mmc_wp");
+		if (ret)
+			goto err_free_cd;
+		ret = gpio_direction_input(pdata->slots[0].gpio_wp);
+		if (ret)
+			goto err_free_wp;
+	} else
+		pdata->slots[0].gpio_wp = -EINVAL;
+
+	return 0;
+
+err_free_wp:
+	gpio_free(pdata->slots[0].gpio_wp);
+err_free_cd:
+	if (gpio_is_valid(pdata->slots[0].switch_pin))
+err_free_sp:
+		gpio_free(pdata->slots[0].switch_pin);
+	return ret;
+}
+#endif
 static void omap_hsmmc_gpio_free(struct omap_mmc_platform_data *pdata)
 {
 	if (gpio_is_valid(pdata->slots[0].gpio_wp))
@@ -800,8 +1082,28 @@ omap_hsmmc_show_cover_switch(struct device *dev, struct device_attribute *attr,
 	struct mmc_host *mmc = container_of(dev, struct mmc_host, class_dev);
 	struct omap_hsmmc_host *host = mmc_priv(mmc);
 
+//FW KIMBYUNGCHUL20110602	EMT_change	[START] 
+	
+#if 1
+	return sprintf(buf, "%s\n",
+			omap_hsmmc_card_detect(host->dev, 0) ? "1" : "0");
+
+
+
+
+
+#else
+
 	return sprintf(buf, "%s\n",
 			omap_hsmmc_cover_is_closed(host) ? "closed" : "open");
+
+
+#endif
+
+
+//FW KIMBYUNGCHUL20110602	EMT_change	[END] 
+
+	
 }
 
 static DEVICE_ATTR(cover_switch, S_IRUGO, omap_hsmmc_show_cover_switch, NULL);
@@ -1285,10 +1587,19 @@ static void omap_hsmmc_detect(struct work_struct *work)
 		carddetect = -ENOSYS;
 	}
 
+#if defined(CONFIG_MACH_LGE_MMC_ENHANCED_COVER) && defined(CONFIG_MACH_LGE_MMC_COVER)	
+
+	if (carddetect)
+		mmc_detect_change(host->mmc, (HZ * 2000) / 1000);
+	else
+		mmc_detect_change(host->mmc, (HZ * 500) / 1000);
+
+#else
 	if (carddetect)
 		mmc_detect_change(host->mmc, (HZ * 200) / 1000);
 	else
 		mmc_detect_change(host->mmc, (HZ * 50) / 1000);
+#endif	
 }
 
 /*
@@ -2254,7 +2565,6 @@ static void omap_hsmmc_debugfs(struct mmc_host *mmc)
 }
 
 #endif
-
 static int __init omap_hsmmc_probe(struct platform_device *pdev)
 {
 	struct omap_mmc_platform_data *pdata = pdev->dev.platform_data;
@@ -2479,6 +2789,22 @@ static int __init omap_hsmmc_probe(struct platform_device *pdev)
 		pdata->resume = omap_hsmmc_resume_cdirq;
 	}
 
+#if defined(CONFIG_MACH_LGE_MMC_ENHANCED_COVER) && defined(CONFIG_MACH_LGE_MMC_COVER)	
+	if ((mmc_slot(host).card_detect_irq_by_data3pin)) {
+		ret = request_irq(mmc_slot(host).card_detect_irq_by_data3pin,
+				  omap_hsmmc_cd_handler,
+				  IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING
+					  | IRQF_DISABLED,
+				  mmc_hostname(mmc), host);
+		if (ret) {			
+			dev_dbg(mmc_dev(host->mmc),
+				"Unable to grab MMC CD IRQ\n");
+			goto err_irq_cd;
+		}
+	}
+#endif	
+
+
 #ifdef CONFIG_TIWLAN_SDIO
 	else if (mmc_slot(host).register_status_notify) {
 		if (pdev->id == CONFIG_TIWLAN_MMC_CONTROLLER-1) {
@@ -2501,12 +2827,30 @@ static int __init omap_hsmmc_probe(struct platform_device *pdev)
 		if (ret < 0)
 			goto err_slot_name;
 	}
+
+
+
+#if 1
+
+	if (mmc_slot(host).card_detect_irq ) {
+		ret = device_create_file(&mmc->class_dev,
+					&dev_attr_cover_switch);
+		if (ret < 0)
+			goto err_slot_name;
+	}
+
+#else
+
 	if (mmc_slot(host).card_detect_irq && mmc_slot(host).get_cover_state) {
 		ret = device_create_file(&mmc->class_dev,
 					&dev_attr_cover_switch);
 		if (ret < 0)
 			goto err_slot_name;
 	}
+
+
+#endif
+
 
 	omap_hsmmc_debugfs(mmc);
 
@@ -2564,6 +2908,15 @@ static int omap_hsmmc_remove(struct platform_device *pdev)
 		free_irq(host->irq, host);
 		if (mmc_slot(host).card_detect_irq)
 			free_irq(mmc_slot(host).card_detect_irq, host);
+
+#if defined(CONFIG_MACH_LGE_MMC_ENHANCED_COVER) && defined(CONFIG_MACH_LGE_MMC_COVER)	
+
+		if (mmc_slot(host).card_detect_irq_by_data3pin)
+			free_irq(mmc_slot(host).card_detect_irq_by_data3pin, host);
+
+#endif	
+
+		
 		flush_scheduled_work();
 
 		if (host->adma_table != NULL)
@@ -2620,13 +2973,14 @@ static int omap_hsmmc_suspend(struct device *dev)
 		mmc_host_enable(host->mmc);
 		ret = mmc_suspend_host(host->mmc);
 		if (ret == 0) {
-			omap_hsmmc_disable_irq(host);
-			OMAP_HSMMC_WRITE(host, HCTL,
-				OMAP_HSMMC_READ(host, HCTL) & ~SDBP);
-			mmc_host_disable(host->mmc);
+
+					omap_hsmmc_disable_irq(host);
+					OMAP_HSMMC_WRITE(host, HCTL,OMAP_HSMMC_READ(host, HCTL) & ~SDBP);
+					mmc_host_disable(host->mmc);
 
 			if (host->got_dbclk)
 				clk_disable(host->dbclk);
+			
 		} else {
 			host->suspended = 0;
 			if (host->pdata->resume) {
@@ -2660,13 +3014,25 @@ static int omap_hsmmc_resume(struct device *dev)
 		return 0;
 
 	if (host) {
+
+
+	  #ifdef CONFIG_MACH_LGE_MMC_REFRESH		
+
+	  int retry_count = 2;
+		
+	  for(;retry_count!=0;retry_count--)
+	  {
+
+	  #endif 	
+	  
 		if (mmc_host_enable(host->mmc) != 0)
 			goto clk_en_err;
 
 		if (host->got_dbclk)
 			clk_enable(host->dbclk);
 
-		omap_hsmmc_conf_bus_power(host);
+				omap_hsmmc_conf_bus_power(host);
+
 
 		if (host->pdata->resume) {
 			ret = host->pdata->resume(&pdev->dev, host->slot_id);
@@ -2674,13 +3040,39 @@ static int omap_hsmmc_resume(struct device *dev)
 				dev_dbg(mmc_dev(host->mmc),
 					"Unmask interrupt failed\n");
 		}
-
 		omap_hsmmc_protect_card(host);
 
 		/* Notify the core to resume the host */
 		ret = mmc_resume_host(host->mmc);
 		if (ret == 0)
 			host->suspended = 0;
+
+	  #ifdef CONFIG_MACH_LGE_MMC_REFRESH	  
+
+
+		if(ret == 0xbcbc)
+		{		
+			printk(KERN_DEBUG "%s: [KIMBC]resume retry %d\n", mmc_hostname(host->mmc));
+			omap_hsmmc_enabled_to_disabled(host->mmc);	// 1st
+			omap_hsmmc_enabled_to_disabled(host->mmc);	// 2nd
+			udelay(100);
+
+			omap_hsmmc_regulator_force_refresh(host->mmc);				
+			udelay(100);
+			
+			omap_hsmmc_disabled_to_enabled(host->mmc);		// 1st	
+			omap_hsmmc_disabled_to_enabled(host->mmc);		// 2nd
+			udelay(100);
+			host->suspended = 0;
+			mmc_host_disable(host->mmc);
+			omap_hsmmc_suspend(dev);
+			udelay(1000);
+		}else
+			break;
+
+	  }
+	  #endif	
+
 
 		mmc_host_lazy_disable(host->mmc);
 	}

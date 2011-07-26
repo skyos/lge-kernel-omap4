@@ -389,26 +389,33 @@ static struct omap_volt_data omap36xx_vdd2_volt_data[] = {
  * driver after reading the efuse.
  */
 static struct omap_volt_data omap44xx_vdd_mpu_volt_data[] = {
-	{.volt_nominal = 930000, .sr_errminlimit = 0xF4, .vp_errgain = 0x0C, .abb_type = NOMINAL_OPP},
-	{.volt_nominal = 1100000, .sr_errminlimit = 0xF9, .vp_errgain = 0x16, .abb_type = NOMINAL_OPP},
-	{.volt_nominal = 1260000, .sr_errminlimit = 0xFA, .vp_errgain = 0x23, .abb_type = NOMINAL_OPP},
-	{.volt_nominal = 1350000, .sr_errminlimit = 0xFA, .vp_errgain = 0x27, .abb_type = FAST_OPP},
+	{.volt_nominal = 1005000, .sr_errminlimit = 0xF4, .vp_errgain = 0x0C, .abb_type = NOMINAL_OPP},
+	{.volt_nominal = 1025000, .sr_errminlimit = 0xF4, .vp_errgain = 0x0C, .abb_type = NOMINAL_OPP},
+	{.volt_nominal = 1200000, .sr_errminlimit = 0xF9, .vp_errgain = 0x16, .abb_type = NOMINAL_OPP},
+	{.volt_nominal = 1313000, .sr_errminlimit = 0xFA, .vp_errgain = 0x23, .abb_type = NOMINAL_OPP},
+	//LGE_CHANGE_S [kyungyoon.kim@lge.com] 2011-10-07 for CX2 @1.2GHz
+	#if defined (CONFIG_MACH_LGE_CX2)
+	{.volt_nominal = 1374000, .sr_errminlimit = 0xFA, .vp_errgain = 0x27, .abb_type = FAST_OPP},
+	#endif
+	//LGE_CHANGE_E [kyungyoon.kim@lge.com] 2011-10-07 for CX2 @1.2GHz
+	{.volt_nominal = 1375000, .sr_errminlimit = 0xFA, .vp_errgain = 0x27, .abb_type = FAST_OPP},
 };
 
 static struct omap_volt_data omap44xx_vdd_iva_volt_data[] = {
-	{.volt_nominal = 928000, .sr_errminlimit = 0xF4, .vp_errgain = 0x0C, .abb_type = NOMINAL_OPP},
-	{.volt_nominal = 930000, .sr_errminlimit = 0xF4, .vp_errgain = 0x0C, .abb_type = NOMINAL_OPP},
-	{.volt_nominal = 1100000, .sr_errminlimit = 0xF9, .vp_errgain = 0x16, .abb_type = NOMINAL_OPP},
+	{.volt_nominal = 1011000, .sr_errminlimit = 0xF4, .vp_errgain = 0x0C, .abb_type = NOMINAL_OPP},
+	{.volt_nominal = 1013000, .sr_errminlimit = 0xF4, .vp_errgain = 0x0C, .abb_type = NOMINAL_OPP},
+	{.volt_nominal = 1188000, .sr_errminlimit = 0xF9, .vp_errgain = 0x16, .abb_type = NOMINAL_OPP},
 #ifdef CONFIG_OMAP_ABB_DEFAULT_IVA_FBB
-	{.volt_nominal = 1260000, .sr_errminlimit = 0xFA, .vp_errgain = 0x23, .abb_type = FAST_OPP},
+	{.volt_nominal = 1300000, .sr_errminlimit = 0xFA, .vp_errgain = 0x23, .abb_type = FAST_OPP},
 #else
-	{.volt_nominal = 1260000, .sr_errminlimit = 0xFA, .vp_errgain = 0x23, .abb_type = NOMINAL_OPP},
+	{.volt_nominal = 1300000, .sr_errminlimit = 0xFA, .vp_errgain = 0x23, .abb_type = NOMINAL_OPP},
 #endif
 };
 
 static struct omap_volt_data omap44xx_vdd_core_volt_data[] = {
-	{.volt_nominal = 930000, .sr_errminlimit = 0xF4, .vp_errgain = 0x0C},
-	{.volt_nominal = 1100000, .sr_errminlimit = 0xF9, .vp_errgain = 0x16},
+	{.volt_nominal = 1005000, .sr_errminlimit = 0xF4, .vp_errgain = 0x0C},
+	{.volt_nominal = 1025000, .sr_errminlimit = 0xF4, .vp_errgain = 0x0C},
+	{.volt_nominal = 1200000, .sr_errminlimit = 0xF9, .vp_errgain = 0x16},
 };
 
 /* OMAP 3430 MPU Core VDD dependency table */
@@ -429,21 +436,45 @@ static struct omap_vdd_dep_info omap34xx_vdd1_dep_info[] = {
 };
 
 /* OMAP 4430 MPU Core VDD dependency table */
+//LGE_CHANGE_S [kyungyoon.kim@lge.com] 2011-10-07 for CX2 @1.2GHz
+#if defined (CONFIG_MACH_LGE_CX2)
 static struct omap_vdd_dep_volt omap44xx_vddmpu_vddcore_data[] = {
-	{.main_vdd_volt = 930000, .dep_vdd_volt = 930000},
-	{.main_vdd_volt = 1100000, .dep_vdd_volt = 1100000},
-	{.main_vdd_volt = 1260000, .dep_vdd_volt = 1100000},
-	{.main_vdd_volt = 1350000, .dep_vdd_volt = 1100000},
+	{.main_vdd_volt = 1005000, .dep_vdd_volt = 1025000},
+	{.main_vdd_volt = 1025000, .dep_vdd_volt = 1025000},
+	{.main_vdd_volt = 1200000, .dep_vdd_volt = 1200000},
+	{.main_vdd_volt = 1313000, .dep_vdd_volt = 1200000},
+	{.main_vdd_volt = 1374000, .dep_vdd_volt = 1200000},
+	{.main_vdd_volt = 1375000, .dep_vdd_volt = 1200000},
 	{.main_vdd_volt = 0, .dep_vdd_volt = 0},
 };
 
 static struct omap_vdd_dep_volt omap44xx_vddiva_vddcore_data[] = {
-	{.main_vdd_volt = 928000, .dep_vdd_volt = 930000},
-	{.main_vdd_volt = 930000, .dep_vdd_volt = 930000},
-	{.main_vdd_volt = 1100000, .dep_vdd_volt = 1100000},
-	{.main_vdd_volt = 1260000, .dep_vdd_volt = 1100000},
+	{.main_vdd_volt = 1011000, .dep_vdd_volt = 1025000},
+	{.main_vdd_volt = 1013000, .dep_vdd_volt = 1025000},
+	{.main_vdd_volt = 1188000, .dep_vdd_volt = 1200000},
+	{.main_vdd_volt = 1300000, .dep_vdd_volt = 1200000},
 	{.main_vdd_volt = 0, .dep_vdd_volt = 0},
 };
+#else
+static struct omap_vdd_dep_volt omap44xx_vddmpu_vddcore_data[] = {
+	{.main_vdd_volt = 1005000, .dep_vdd_volt = 1005000},
+	{.main_vdd_volt = 1025000, .dep_vdd_volt = 1025000},
+	{.main_vdd_volt = 1200000, .dep_vdd_volt = 1200000},
+	{.main_vdd_volt = 1313000, .dep_vdd_volt = 1200000},
+	{.main_vdd_volt = 1375000, .dep_vdd_volt = 1200000},
+	{.main_vdd_volt = 0, .dep_vdd_volt = 0},
+};
+
+static struct omap_vdd_dep_volt omap44xx_vddiva_vddcore_data[] = {
+	{.main_vdd_volt = 1011000, .dep_vdd_volt = 1005000},
+	{.main_vdd_volt = 1013000, .dep_vdd_volt = 1025000},
+	{.main_vdd_volt = 1188000, .dep_vdd_volt = 1200000},
+	{.main_vdd_volt = 1300000, .dep_vdd_volt = 1200000},
+	{.main_vdd_volt = 0, .dep_vdd_volt = 0},
+};
+#endif
+//LGE_CHANGE_S [kyungyoon.kim@lge.com] 2011-10-07 for CX2 @1.2GHz
+
 
 static struct omap_vdd_dep_info omap44xx_vddmpu_dep_info[] = {
 	{
@@ -1468,47 +1499,49 @@ static void __init vdd_data_configure(struct omap_vdd_info *vdd)
 	strcpy(name, "vdd_");
 	strcat(name, vdd->voltdm.name);
 	vdd_debug = debugfs_create_dir(name, voltage_dir);
-	(void) debugfs_create_file("vp_errorgain", S_IRUGO | S_IWUGO,
+	(void) debugfs_create_file("vp_errorgain", S_IRUGO | S_IWUSR,
 				vdd_debug,
 				&(vdd->vp_reg.vpconfig_errorgain),
 				&vp_debug_fops);
-	(void) debugfs_create_file("vp_smpswaittimemin", S_IRUGO | S_IWUGO,
+	(void) debugfs_create_file("vp_smpswaittimemin", S_IRUGO | S_IWUSR,
 				vdd_debug,
 				&(vdd->vp_reg.vstepmin_smpswaittimemin),
 				&vp_debug_fops);
-	(void) debugfs_create_file("vp_stepmin", S_IRUGO | S_IWUGO, vdd_debug,
+	(void) debugfs_create_file("vp_stepmin", S_IRUGO | S_IWUSR, vdd_debug,
 				&(vdd->vp_reg.vstepmin_stepmin),
 				&vp_debug_fops);
-	(void) debugfs_create_file("vp_smpswaittimemax", S_IRUGO | S_IWUGO,
+	(void) debugfs_create_file("vp_smpswaittimemax", S_IRUGO | S_IWUSR,
 				vdd_debug,
 				&(vdd->vp_reg.vstepmax_smpswaittimemax),
 				&vp_debug_fops);
-	(void) debugfs_create_file("vp_stepmax", S_IRUGO | S_IWUGO, vdd_debug,
+	(void) debugfs_create_file("vp_stepmax", S_IRUGO | S_IWUSR, vdd_debug,
 				&(vdd->vp_reg.vstepmax_stepmax),
 				&vp_debug_fops);
-	(void) debugfs_create_file("vp_vddmax", S_IRUGO | S_IWUGO, vdd_debug,
+	(void) debugfs_create_file("vp_vddmax", S_IRUGO | S_IWUSR, vdd_debug,
 				&(vdd->vp_reg.vlimitto_vddmax),
 				&vp_debug_fops);
-	(void) debugfs_create_file("vp_vddmin", S_IRUGO | S_IWUGO, vdd_debug,
+	(void) debugfs_create_file("vp_vddmin", S_IRUGO | S_IWUSR, vdd_debug,
 				&(vdd->vp_reg.vlimitto_vddmin),
 				&vp_debug_fops);
-	(void) debugfs_create_file("vp_timeout", S_IRUGO | S_IWUGO, vdd_debug,
+	(void) debugfs_create_file("vp_timeout", S_IRUGO | S_IWUSR, vdd_debug,
 				&(vdd->vp_reg.vlimitto_timeout),
 				&vp_debug_fops);
 	(void) debugfs_create_file("curr_vp_volt", S_IRUGO, vdd_debug,
 				(void *) vdd, &vp_volt_debug_fops);
 	(void) debugfs_create_file("curr_nominal_volt", S_IRUGO, vdd_debug,
 				(void *) vdd, &nom_volt_debug_fops);
+#if 0   // [20110819:david.seo]Antivirus Phone reset patch	
 	(void) debugfs_create_file("volt_users", S_IRUGO, vdd_debug,
 				(void *) vdd, &volt_users_dbg_fops);
+#endif
 #ifdef CONFIG_OMAP_ABB
 	if (cpu_is_omap44xx() && !strcmp("vdd_iva", name))
-		(void) debugfs_create_u8("fbb_enable", S_IRUGO | S_IWUGO,
+		(void) debugfs_create_u8("fbb_enable", S_IRUGO | S_IWUSR,
 				vdd_debug, &(vdd->volt_data[2].abb_type));
 
 	if ((cpu_is_omap3630() || cpu_is_omap44xx())
 			&& !strcmp("vdd_mpu", name))
-		(void) debugfs_create_u8("fbb_enable", S_IRUGO | S_IWUGO,
+		(void) debugfs_create_u8("fbb_enable", S_IRUGO | S_IWUSR,
 				vdd_debug, &(vdd->volt_data[3].abb_type));
 #endif
 #endif
@@ -2350,6 +2383,10 @@ struct voltagedomain *omap_voltage_domain_get(char *name)
 	return ERR_PTR(-EINVAL);
 }
 
+//LGE_CHANGE_S [kibum.lee@lge.com] 2010-12-15, common : DVFS verification log 
+//#define PM_DVFS_DBG
+//LGE_CHANGE_E [kibum.lee@lge.com] 2010-12-15, common : DVFS verification log 
+
 /**
  * omap_voltage_scale : API to scale the devices associated with a
  *			voltage domain vdd voltage.
@@ -2398,7 +2435,7 @@ int omap_voltage_scale(struct voltagedomain *voltdm, unsigned long volt)
 		struct omap_opp *opp;
 		unsigned long freq;
 
-		opp = opp_find_voltage(vdd->dev_list[i], volt);
+		opp = opp_find_voltage(vdd->dev_list[i], volt, true);
 		if (IS_ERR(opp)) {
 			dev_err(vdd->dev_list[i], "%s: Unable to find OPP for"
 				"volt%ld\n", __func__, volt);
@@ -2410,7 +2447,16 @@ int omap_voltage_scale(struct voltagedomain *voltdm, unsigned long volt)
 		if (freq == opp_get_rate(vdd->dev_list[i]))
 			continue;
 
+//LGE_CHANGE_S [kibum.lee@lge.com] 2010-12-15, common : DVFS verification log 
+#ifndef PM_DVFS_DBG
 		opp_set_rate(vdd->dev_list[i], freq);
+#else
+		int nRet=0;
+		nRet = opp_set_rate(vdd->dev_list[i], freq);
+		//printk("voltdomain=%5s, voltage=%8ld, freg=%11ld, nRet=%d\n", vdd->voltdm.name, volt, freq, nRet);
+		printk("%dth, voltdomain=%5s, voltage=%8ld, freg=%11ld, dev_name=%s, string=%s, nRet=%d\n\n", i, vdd->voltdm.name, volt, freq, dev_name(vdd->dev_list[i]), dev_driver_string(vdd->dev_list[i]), nRet);
+#endif
+//LGE_CHANGE_E [kibum.lee@lge.com] 2010-12-15, common : DVFS verification log 
 	}
 
 	if (!is_volt_scaled)

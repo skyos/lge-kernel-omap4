@@ -1343,8 +1343,15 @@ static int __init omap2_system_dma_init_dev(struct omap_hwmod *oh, void *user)
 	p->enable_lnk		= omap2_enable_lnk;
 	p->disable_lnk		= omap2_disable_lnk;
 	p->set_dma_chain_ch	= set_dma_chain_ch;
+/* Disable SPI codes in case of MIPI HSI */
+#if defined(CONFIG_OMAP_HSI)
 	p->dma_context_save	= omap2_dma_context_save;
 	p->dma_context_restore	= omap2_dma_context_restore;
+#else	/* CONFIG_SPI_IFX */
+	/* SPI ISSUE : TI Patch 20110414 - DMA initialization before SPI intterrupt at WakeUp*/
+	p->dma_context_save = NULL;
+	p->dma_context_restore	= NULL;
+#endif
 	p->clear_lch_regs	= NULL;
 	p->get_gdma_dev		= NULL;
 	p->set_gdma_dev		= NULL;

@@ -347,7 +347,8 @@ clear:
 	return 0;
 
 err_unmap:
-	pcpu_pre_unmap_flush(chunk, page_start, unmap_end);
+	//pcpu_pre_unmap_flush(chunk, page_start, unmap_end);
+	pcpu_post_map_flush(chunk, page_start, unmap_end);
 	pcpu_for_each_unpop_region(chunk, rs, re, page_start, unmap_end)
 		pcpu_unmap_pages(chunk, pages, populated, rs, re);
 	pcpu_post_unmap_tlb_flush(chunk, page_start, unmap_end);

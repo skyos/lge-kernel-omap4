@@ -1027,6 +1027,8 @@ fb_blank(struct fb_info *info, int blank)
  	return ret;
 }
 
+extern int g_osp_lcd_level;
+
 static long do_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			unsigned long arg)
 {
@@ -1143,6 +1145,15 @@ static long do_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		info->flags &= ~FBINFO_MISC_USEREVENT;
 		release_console_sem();
 		unlock_fb_info(info);
+		break;
+	case FBIOGET_SCREEN_DATA:
+		acquire_console_sem();
+		if ((system_state == SYSTEM_RUNNING) && (g_osp_lcd_level > 0)) {
+			ret = copy_to_user(argp, phys_to_virt(omap_readl(0x48041080)), 1536000) ? -EFAULT : 0;
+		} else {
+			ret = -EINVAL;
+		}
+		release_console_sem();
 		break;
 	default:
 		if (!lock_fb_info(info))

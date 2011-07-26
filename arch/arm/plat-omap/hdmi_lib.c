@@ -43,6 +43,23 @@
 #include <linux/seq_file.h>
 #include <linux/hrtimer.h>
 
+/* LGE_CHANGE_S [wonki.choi@lge.com] HDMI wake lock 2011-4-09*/
+#include <linux/sched.h>
+#include <linux/wait.h>
+/* LGE_CHANGE_E [wonki.choi@lge.com] 2011-4-09 */
+
+#ifdef CONFIG_OMAP_HDMI_AUDIO_WA
+#include <syslink/ipc.h>
+#include <syslink/notify.h>
+#include <syslink/notify_driver.h>
+#include <syslink/notifydefs.h>
+#include <syslink/notify_driverdefs.h>
+
+#define SYS_M3 2
+#define HDMI_AUDIO_WA_EVENT 5
+#define HDMI_AUDIO_WA_EVENT_ACK 5
+#endif
+
 /* HDMI PHY */
 #define HDMI_TXPHY_TX_CTRL			0x0ul
 #define HDMI_TXPHY_DIGITAL_CTRL			0x4ul
@@ -64,7 +81,8 @@
 #define HDMI_WP_WP_CLK				0x70ul
 #define HDMI_WP_WP_DEBUG_CFG			0x90ul
 #define HDMI_WP_WP_DEBUG_DATA			0x94ul
-
+/* LGE_CHANGE [wonki.choi@lge.com] HDMI rework 2011-4-21 */
+#define HDMI_WP_IRQENANBLE_CLR		0x30ul
 
 /* HDMI IP Core System */
 #define HDMI_CORE_SYS__VND_IDL			0x0ul
@@ -207,9 +225,32 @@ static struct {
 	void __iomem *base_core_av;	/* 1 */
 	void __iomem *base_wp;		/* 2 */
 	struct hdmi_core_infoframe_avi avi_param;
-	struct mutex mutex;
+	
 	struct list_head notifier_head;
+	struct hdmi_audio_format audio_fmt;
+	struct hdmi_audio_dma audio_dma;
+	struct hdmi_core_audio_config audio_core_cfg;
+#ifdef CONFIG_OMAP_HDMI_AUDIO_WA
+	u32 notify_event_reg;
+	u32 cts_interval;
+	struct omap_chip_id audio_wa_chip_ids;
+	struct task_struct *wa_task;
+	u32 ack_payload;
+/* LGE_CHANGE [sanggu.han@lge.com] 2011-10-05 CX2 Base Version making*/
+///# LGE_CHANGE_S Apply P2 TI Patch
+#if defined (CONFIG_MACH_LGE_CX2)
+	bool audio_wa_started; /* HDMI WA guard*/ // [common] ducati crash bug TI patch
+#endif
+///# LGE_CHANGE_E
+#endif
+	u32 pixel_clock;
+	/* LGE_CHANGE_S [wonki.choi@lge.com] HDMI audio stop wait 2011-4-09*/
+	wait_queue_head_t audio_disable_wq;
+	bool	audio_enable;
+	bool	device_connected;
+	/* LGE_CHANGE_E [wonki.choi@lge.com] 2011-4-09 */
 } hdmi;
+static DEFINE_MUTEX(hdmi_mutex);
 
 static inline void hdmi_write_reg(u32 base, u16 idx, u32 val)
 {
@@ -357,9 +398,12 @@ int hdmi_core_ddc_edid(u8 *pEDID, int ext)
 		/* Clk SCL Devices */
 		REG_FLD_MOD(ins, HDMI_CORE_DDC_CMD, 0xA, 3, 0);
 
+		mdelay(100); // novashock.lee EDID READ PATCH FROM TI 
 		/* HDMI_CORE_DDC_STATUS__IN_PROG */
-		while (FLD_GET(hdmi_read_reg(ins, sts), 4, 4) == 1)
-			;
+		while (FLD_GET(hdmi_read_reg(ins, sts), 4, 4) == 1){
+			mdelay(10); // novashock.lee EDID READ PATCH FROM TI
+		}
+
 
 		/* Clear FIFO */
 		REG_FLD_MOD(ins, HDMI_CORE_DDC_CMD, 0x9, 3, 0);
@@ -493,12 +537,24 @@ static void hdmi_core_init(enum hdmi_deep_mode deep_color,
 	v_cfg->CoreHdmiDvi = HDMI_DVI;
 	v_cfg->CoreTclkSelClkMult = FPLL10IDCK;
 	/* audio core */
-	audio_cfg->fs = FS_44100;
-	audio_cfg->n = 0;
-	audio_cfg->cts = 0;
-	audio_cfg->layout = LAYOUT_2CH; /* 2channel audio */
+	audio_cfg->fs = FS_48000;
+	audio_cfg->n = 6144;
+	audio_cfg->layout = LAYOUT_2CH;
+	audio_cfg->if_fs = IF_FS_NO;
+	audio_cfg->if_channel_number = 2;
+	audio_cfg->if_sample_size = IF_NO_PER_SAMPLE;
+	audio_cfg->if_audio_channel_location = HDMI_CEA_CODE_00;
+	audio_cfg->i2schst_max_word_length = I2S_CHST_WORD_MAX_20;
+	audio_cfg->i2schst_word_length = I2S_CHST_WORD_16_BITS;
+	audio_cfg->i2s_in_bit_length = I2S_IN_LENGTH_16;
+	audio_cfg->i2s_justify = HDMI_AUDIO_JUSTIFY_LEFT;
 	audio_cfg->aud_par_busclk = 0;
+	audio_cfg->cts_mode = CTS_MODE_SW;
+
+	if (omap_rev() == OMAP4430_REV_ES1_0) {
+		audio_cfg->aud_par_busclk = (((128 * 31) - 1) << 8);
 	audio_cfg->cts_mode = CTS_MODE_HW;
+	}
 
 	/* info frame */
 	avi->db1y_rgb_yuv422_yuv444 = 0;
@@ -621,21 +677,30 @@ static int hdmi_core_audio_mode_enable(u32  instanceName)
 	return 0;
 }
 
-static int hdmi_core_audio_config(u32 name,
+static void hdmi_core_audio_config(u32 name,
 		struct hdmi_core_audio_config *audio_cfg)
 {
-	int ret = 0;
-	u32 SD3_EN, SD2_EN, SD1_EN, SD0_EN;
+	u32 SD3_EN = 0, SD2_EN = 0, SD1_EN = 0, SD0_EN = 0, r;
 	u8 DBYTE1, DBYTE2, DBYTE4, CHSUM;
 	u8 size1;
 	u16 size0;
+	u8 acr_en;
+
+#ifdef CONFIG_OMAP_HDMI_AUDIO_WA
+	if (omap_chip_is(hdmi.audio_wa_chip_ids))
+		acr_en = 0;
+	else
+		acr_en = 1;
+#else
+	acr_en = 1;
+#endif
 
 	/* CTS_MODE */
 	WR_REG_32(name, HDMI_CORE_AV__ACR_CTRL,
 		/* MCLK_EN (0: Mclk is not used) */
 		(0x0 << 2) |
-		/* CTS Request Enable (1:Packet Enable, 0:Disable) */
-		(0x1 << 1) |
+		/* Set ACR packets while audio is not present */
+		(acr_en << 1) |
 		/* CTS Source Select (1:SW, 0:HW) */
 		(audio_cfg->cts_mode << 0));
 
@@ -656,18 +721,18 @@ static int hdmi_core_audio_config(u32 name,
 	REG_FLD_MOD(name, HDMI_CORE_AV__AUD_PAR_BUSCLK_3,
 				(audio_cfg->aud_par_busclk >> 16), 7, 0);
 	/* FS_OVERRIDE = 1 because // input is used */
-	WR_REG_32(name, HDMI_CORE_AV__SPDIF_CTRL, 0x1);
-	 /* refer to table209 p192 in func core spec */
-	WR_REG_32(name, HDMI_CORE_AV__I2S_CHST4, audio_cfg->fs);
+	REG_FLD_MOD(name, HDMI_CORE_AV__SPDIF_CTRL, 1, 1, 1);
+	/* refer to table171 p122 in func core spec*/
+	REG_FLD_MOD(name, HDMI_CORE_AV__I2S_CHST4, audio_cfg->fs, 3, 0);
 
 	/*
 	 * audio config is mainly due to wrapper hardware connection
-	 * and so are fixe (hardware) I2S deserializer is by-pass
+	 * and so are fixed (hardware) I2S deserializer is by-passed
 	 * so I2S configuration is not needed (I2S don't care).
-	 * Wrapper are directly connected at the I2S deserialiser
-	 * output level so some register call I2S... need to be
-	 * programm to configure this parallel bus, there configuration
-	 * is also fixe and due to the hardware connection (I2S hardware)
+	 * Wrapper is directly connected at the I2S deserialiser
+	 * output level so some registers call I2S and need to be
+	 * programmed to configure this parallel bus, there configuration
+	 * is also fixed and due to the hardware connection (I2S hardware)
 	 */
 	WR_REG_32(name, HDMI_CORE_AV__I2S_IN_CTRL,
 		(0 << 7) |	/* HBRA_ON */
@@ -675,17 +740,18 @@ static int hdmi_core_audio_config(u32 name,
 		(0 << 5) |	/* CBIT_ORDER */
 		(0 << 4) |	/* VBit, 0x0=PCM, 0x1=compressed */
 		(0 << 3) |	/* I2S_WS, 0xdon't care */
-		(0 << 2) |	/* I2S_JUST, 0=left- 1=right-justified */
+		(audio_cfg->i2s_justify << 2) | /* I2S_JUST*/
 		(0 << 1) |	/* I2S_DIR, 0xdon't care */
 		(0));		/* I2S_SHIFT, 0x0 don't care */
 
-	WR_REG_32(name, HDMI_CORE_AV__I2S_CHST5, /* mode only */
-		(0 << 4) |	/* FS_ORIG */
-		(1 << 1) |	/* I2S lenght 16bits (refer doc) */
-		(0));		/* Audio sample lenght */
+	r = hdmi_read_reg(name, HDMI_CORE_AV__I2S_CHST5);
+	r = FLD_MOD(r, audio_cfg->fs, 7, 4); /* FS_ORIG */
+	r = FLD_MOD(r, audio_cfg->i2schst_word_length, 3, 1);
+	r = FLD_MOD(r, audio_cfg->i2schst_max_word_length, 0, 0);
+	WR_REG_32(name, HDMI_CORE_AV__I2S_CHST5, r);
 
-	WR_REG_32(name, HDMI_CORE_AV__I2S_IN_LEN, /* mode only */
-		(0xb));		/* In length b=>24bits i2s hardware */
+	REG_FLD_MOD(name, HDMI_CORE_AV__I2S_IN_LEN,
+			audio_cfg->i2s_in_bit_length, 3, 0);
 
 	/* channel enable depend of the layout */
 	if (audio_cfg->layout == LAYOUT_2CH) {
@@ -700,15 +766,15 @@ static int hdmi_core_audio_config(u32 name,
 		SD0_EN = 0x1;
 	}
 
-	WR_REG_32(name, HDMI_CORE_AV__AUD_MODE,
-		(SD3_EN << 7) |	/* SD3_EN */
-		(SD2_EN << 6) |	/* SD2_EN */
-		(SD1_EN << 5) |	/* SD1_EN */
-		(SD0_EN << 4) |	/* SD0_EN */
-		(0 << 3) |	/* DSD_EN */
-		(1 << 2) |	/* AUD_PAR_EN */
-		(0 << 1) |	/* SPDIF_EN */
-		(0));		/* AUD_EN */
+	r = hdmi_read_reg(name, HDMI_CORE_AV__AUD_MODE);
+	r = FLD_MOD(r, SD3_EN, 7, 7); /* SD3_EN */
+	r = FLD_MOD(r, SD2_EN, 6, 6); /* SD2_EN */
+	r = FLD_MOD(r, SD1_EN, 5, 5); /* SD1_EN */
+	r = FLD_MOD(r, SD0_EN, 4, 4); /* SD0_EN */
+	r = FLD_MOD(r, 0, 3, 3); /* DSD_EN */
+	r = FLD_MOD(r, 1, 2, 2); /* AUD_PAR_EN */
+	r = FLD_MOD(r, 0, 1, 1); /* SPDIF_EN */
+	WR_REG_32(name, HDMI_CORE_AV__AUD_MODE, r);
 
 	/* Audio info frame setting refer to CEA-861-d spec p75 */
 	/* 0x0 because on HDMI CT must be = 0 / -1 because 1 is for 2 channel */
@@ -748,8 +814,6 @@ static int hdmi_core_audio_config(u32 name,
 	WR_REG_32(name, HDMI_CORE_AV__MPEG_VERS, 0x0);
 	WR_REG_32(name, HDMI_CORE_AV__MPEG_LEN, 0x0);
 	WR_REG_32(name, HDMI_CORE_AV__MPEG_CHSUM, 0x0);
-
-	return ret;
 }
 
 int hdmi_core_read_avi_infoframe(struct hdmi_core_infoframe_avi *info_avi)
@@ -1062,14 +1126,14 @@ static void hdmi_w1_init(struct hdmi_video_timing *t_p,
 	audio_fmt->iec = HDMI_AUDIO_FORMAT_LPCM;
 	audio_fmt->justify = HDMI_AUDIO_JUSTIFY_LEFT;
 	audio_fmt->left_before = HDMI_SAMPLE_LEFT_FIRST;
-	audio_fmt->sample_number = HDMI_ONEWORD_ONE_SAMPLE;
-	audio_fmt->sample_size = HDMI_SAMPLE_24BITS;
+	audio_fmt->sample_number = HDMI_ONEWORD_TWO_SAMPLES;
+	audio_fmt->sample_size = HDMI_SAMPLE_16BITS;
+	audio_fmt->block_start_end = HDMI_BLOCK_STARTEND_ON;
 
-	audio_dma->dma_transfer = 0x10;
+	audio_dma->dma_transfer = 0x20;
 	audio_dma->block_size = 0xC0;
 	audio_dma->dma_or_irq = HDMI_THRESHOLD_DMA;
-	audio_dma->threshold_value = 0x10;
-	audio_dma->block_start_end = HDMI_BLOCK_STARTEND_ON;
+	audio_dma->threshold_value = 0x20;
 }
 
 
@@ -1172,6 +1236,14 @@ void hdmi_w1_video_start(void)
 	REG_FLD_MOD(HDMI_WP, HDMI_WP_VIDEO_CFG, (u32)0x1, 31, 31);
 }
 
+int hdmi_w1_get_video_state(void)
+{
+       uint32_t status = hdmi_read_reg(HDMI_WP, HDMI_WP_VIDEO_CFG);
+
+       return (status & 0x80000000) ? 1 : 0;
+}
+
+
 static void hdmi_w1_video_init_format(struct hdmi_video_format *f_p,
 	struct hdmi_video_timing *t_p, struct hdmi_config *param)
 {
@@ -1233,10 +1305,9 @@ static void hdmi_w1_video_config_timing(
 	hdmi_write_reg(HDMI_WP, HDMI_WP_VIDEO_TIMING_V, timing_v);
 }
 
-static int hdmi_w1_audio_config_format(u32 name,
+static void hdmi_w1_audio_config_format(u32 name,
 			struct hdmi_audio_format *audio_fmt)
 {
-	int ret = 0;
 	u32 value = 0;
 
 	value = hdmi_read_reg(name, HDMI_WP_AUDIO_CFG);
@@ -1254,17 +1325,15 @@ static int hdmi_w1_audio_config_format(u32 name,
 	value |= ((audio_fmt->audio_channel_location) << 16);
 	value &= 0xffffffef;
 	value |= ((audio_fmt->iec) << 4);
-	/* Wakeup */
-	value = 0x1030022;
+	value &= 0xffffffdf;
+	value |= ((audio_fmt->block_start_end) << 5);
 	hdmi_write_reg(name, HDMI_WP_AUDIO_CFG, value);
 	DBG("HDMI_WP_AUDIO_CFG = 0x%x\n", value);
 
-	return ret;
 }
 
-static int hdmi_w1_audio_config_dma(u32 name, struct hdmi_audio_dma *audio_dma)
+static void hdmi_w1_audio_config_dma(u32 name, struct hdmi_audio_dma *audio_dma)
 {
-	int ret = 0;
 	u32 value = 0;
 
 	value = hdmi_read_reg(name, HDMI_WP_AUDIO_CFG2);
@@ -1272,8 +1341,6 @@ static int hdmi_w1_audio_config_dma(u32 name, struct hdmi_audio_dma *audio_dma)
 	value |= audio_dma->block_size;
 	value &= 0xffff00ff;
 	value |= audio_dma->dma_transfer << 8;
-	/*  Wakeup */
-	value = 0x20C0;
 	hdmi_write_reg(name, HDMI_WP_AUDIO_CFG2, value);
 	DBG("HDMI_WP_AUDIO_CFG2 = 0x%x\n", value);
 
@@ -1282,22 +1349,258 @@ static int hdmi_w1_audio_config_dma(u32 name, struct hdmi_audio_dma *audio_dma)
 	value |= audio_dma->dma_or_irq << 9;
 	value &= 0xfffffe00;
 	value |= audio_dma->threshold_value;
-	/*  Wakeup */
-	value = 0x020;
 	hdmi_write_reg(name, HDMI_WP_AUDIO_CTRL, value);
 	DBG("HDMI_WP_AUDIO_CTRL = 0x%x\n", value);
 
-	return ret;
 }
+static int hdmi_configure_acr(u32 pclk)
+{
+	u32 r, deep_color = 0, fs, n, cts;
+#ifdef CONFIG_OMAP_HDMI_AUDIO_WA
+	u32 cts_interval_qtt, cts_interval_res;
+#endif
+
+	/* Deep color mode */
+	if (omap_rev() == OMAP4430_REV_ES1_0)
+		deep_color = 100;
+	else {
+		r = hdmi_read_reg(HDMI_WP, HDMI_WP_VIDEO_CFG);
+		switch (r & 0x03) {
+		case 1:
+			deep_color = 100;
+			break;
+		case 2:
+			deep_color = 125;
+			break;
+		case 3:
+			deep_color = 150;
+			break;
+		default:
+			return -EINVAL;
+		}
+	}
+	switch (hdmi.audio_core_cfg.fs) {
+	case FS_32000:
+		fs = 32000;
+		if ((deep_color == 125) && ((pclk == 54054)
+				|| (pclk == 74250)))
+			n = 8192;
+		else
+			n = 4096;
+		break;
+	case FS_44100:
+		fs = 44100;
+		n = 6272;
+		break;
+	case FS_48000:
+		fs = 48000;
+		if ((deep_color == 125) && ((pclk == 54054)
+				|| (pclk == 74250)))
+			n = 8192;
+		else
+			n = 6144;
+		break;
+	case FS_88200:
+	case FS_96000:
+	case FS_176400:
+	case FS_192000:
+	case FS_NOT_INDICATED:
+	default:
+		return -EINVAL;
+	}
+	/* Process CTS */
+	cts = pclk*(n/128)*deep_color / (fs/10);
+
+#ifdef CONFIG_OMAP_HDMI_AUDIO_WA
+	if (omap_chip_is(hdmi.audio_wa_chip_ids)) {
+		if (pclk && deep_color) {
+			cts_interval_qtt = 1000000 /
+				((pclk * deep_color) / 100);
+			cts_interval_res = 1000000 %
+				((pclk * deep_color) / 100);
+			hdmi.cts_interval = cts_interval_res*n/
+				((pclk * deep_color) / 100);
+			hdmi.cts_interval += cts_interval_qtt*n;
+		} else
+			hdmi.cts_interval = 0;
+	}
+#endif
+
+	hdmi.audio_core_cfg.n = n;
+	hdmi.audio_core_cfg.cts = cts;
+
+	return 0;
+}
+
+
+#ifdef CONFIG_OMAP_HDMI_AUDIO_WA
+int hdmi_lib_acr_wa_send_event(u32 payload)
+{
+	long tout;
+	if (omap_chip_is(hdmi.audio_wa_chip_ids)) {
+
+// TI_UPDATE_S sang-il.lee 2011-05-18 for HDMI ACR workaround
+#if 0
+		if (hdmi.notify_event_reg == HDMI_NOTIFY_EVENT_REG) {
+			notify_send_event(SYS_M3, 0, HDMI_AUDIO_WA_EVENT,
+					payload, 0);
+			if (signal_pending(current))
+				return -ERESTARTSYS;
+			hdmi.wa_task = current;
+			set_current_state(TASK_INTERRUPTIBLE);
+			tout = schedule_timeout(msecs_to_jiffies(5000));
+			if (!tout)
+				return -EIO;
+			if (payload != hdmi.ack_payload)
+				return -EBADE;
+			return 0;
+		}
+		return -ENODEV;
+#else
+			notify_send_event(SYS_M3, 0, HDMI_AUDIO_WA_EVENT,
+					payload, 0);
+			if (signal_pending(current))
+				return -ERESTARTSYS;
+			hdmi.wa_task = current;
+			set_current_state(TASK_INTERRUPTIBLE);
+			tout = schedule_timeout(msecs_to_jiffies(5000));
+			if (!tout)
+				return -EIO;
+//			if (payload != hdmi.ack_payload)
+//			return -EBADE;
+#endif
+// TI_UPDATE_E sang-il.lee 2011-05-18 for HDMI ACR workaround
+	}
+	return 0;
+}
+int hdmi_lib_start_acr_wa(void)
+{
+/* LGE_CHANGE [sanggu.han@lge.com] 2011-10-05 CX2 Base Version making*/
+///# LGE_CHANGE_S Apply P2 TI Patch
+#if defined (CONFIG_MACH_LGE_CX2)
+	int ret = 0;
+
+	if (!hdmi.audio_wa_started) {
+		ret = hdmi_lib_acr_wa_send_event(hdmi.cts_interval);
+		if (!ret)
+			hdmi.audio_wa_started = true;
+	}
+	return ret;
+#else
+	return hdmi_lib_acr_wa_send_event(hdmi.cts_interval);
+#endif
+///#LGE_CHANGE_E
+}
+int hdmi_lib_stop_acr_wa(void)
+{
+/* LGE_CHANGE [sanggu.han@lge.com] 2011-10-05 CX2 Base Version making*/
+///# LGE_CHANGE_S Apply P2 TI Patch
+#if defined (CONFIG_MACH_LGE_CX2)
+	int ret = 0;
+	
+	if (hdmi.audio_wa_started) {
+		ret = hdmi_lib_acr_wa_send_event(0);
+		if (!ret)
+			hdmi.audio_wa_started = false;
+	}
+	return ret;
+#else
+	return hdmi_lib_acr_wa_send_event(0);
+#endif
+///#LGE_CHANGE_E
+}
+
+void hdmi_notify_event_ack_func(u16 proc_id, u16 line_id, u32 event_id,
+							u32 *arg, u32 payload)
+{
+	hdmi.ack_payload = payload;
+	if (WARN_ON(!hdmi.wa_task))
+		return;
+
+	wake_up_process(hdmi.wa_task);
+}
+
+// TI_UPDATE_S sang-il.lee 2011-05-18 for HDMI ACR workaround
+#if 0
+static int hdmi_syslink_notifier_call(struct notifier_block *nb,
+						unsigned long val, void *v)
+#else
+int hdmi_syslink_notifier_call(unsigned long val, void *v)
+#endif
+// TI_UPDATE_E sang-il.lee 2011-05-18 for HDMI ACR workaround
+{
+	int status = 0;
+	u16 *proc_id = (u16 *)v;
+
+	switch ((int)val) {
+	case IPC_START:
+// TI_UPDATE_S sang-il.lee 2011-05-18 for HDMI ACR workaround
+		printk("\n*******hdmi_syslink_notifier_call(IPC_START)******* \n");
+// TI_UPDATE_E sang-il.lee 2011-05-18 for HDMI ACR workaround
+
+		if (*proc_id == multiproc_get_id("SysM3")) {
+			status = notify_register_event(SYS_M3, 0,
+				HDMI_AUDIO_WA_EVENT_ACK, (notify_fn_notify_cbck)
+				hdmi_notify_event_ack_func,	(void *)NULL);
+			if (status == NOTIFY_S_SUCCESS)
+				hdmi.notify_event_reg = HDMI_NOTIFY_EVENT_REG;
+		}
+		return status;
+	case IPC_STOP:
+// TI_UPDATE_S sang-il.lee 2011-05-18 for HDMI ACR workaround
+		printk("\n*******hdmi_syslink_notifier_call(IPC_STOP)******* \n");
+// TI_UPDATE_E sang-il.lee 2011-05-18 for HDMI ACR workaround
+
+		if (*proc_id == multiproc_get_id("SysM3")) {
+			status = notify_unregister_event(SYS_M3, 0,
+				HDMI_AUDIO_WA_EVENT_ACK, (notify_fn_notify_cbck)
+				hdmi_notify_event_ack_func,	(void *)NULL);
+			if (status == NOTIFY_S_SUCCESS)
+				hdmi.notify_event_reg =
+					HDMI_NOTIFY_EVENT_NOTREG;
+		}
+		return status;
+	case IPC_CLOSE:
+	default:
+// TI_UPDATE_S sang-il.lee 2011-05-18 for HDMI ACR workaround
+		printk("\n*******hdmi_syslink_notifier_call(IPC_CLOSE)******* \n");
+// TI_UPDATE_E sang-il.lee 2011-05-18 for HDMI ACR workaround
+		
+		return status;
+	}
+}
+
+// TI_UPDATE_S sang-il.lee 2011-05-18 for HDMI ACR workaround
+#if 0
+static struct notifier_block hdmi_syslink_notify_block = {
+	.notifier_call = hdmi_syslink_notifier_call,
+};
+#else
+#endif
+// TI_UPDATE_E sang-il.lee 2011-05-18 for HDMI ACR workaround
+#endif //CONFIG_OMAP_HDMI_AUDIO_WA
 
 static void hdmi_w1_audio_enable(void)
 {
 	REG_FLD_MOD(HDMI_WP, HDMI_WP_AUDIO_CTRL, 1, 31, 31);
+	/* LGE_CHANGE_S [wonki.choi@lge.com] HDMI wake lock 2011-4-09*/
+	mutex_lock(&hdmi_mutex);
+	hdmi.audio_enable = true;
+	mutex_unlock(&hdmi_mutex);
+	/* LGE_CHANGE_E [wonki.choi@lge.com] 2011-4-09 */
 }
 
 static void hdmi_w1_audio_disable(void)
 {
 	REG_FLD_MOD(HDMI_WP, HDMI_WP_AUDIO_CTRL, 0, 31, 31);
+	/* LGE_CHANGE_S [wonki.choi@lge.com] HDMI audio stop wait 2011-4-09*/
+	printk(KERN_INFO "HDMI Audio Transfer stop\n");
+	mutex_lock(&hdmi_mutex);
+	hdmi.audio_enable = false;
+	wake_up(&hdmi.audio_disable_wq);
+	mutex_unlock(&hdmi_mutex);
+	/* LGE_CHANGE_E [wonki.choi@lge.com] 2011-4-09 */
+
 }
 
 static void hdmi_w1_audio_start(void)
@@ -1310,56 +1613,30 @@ static void hdmi_w1_audio_stop(void)
 	REG_FLD_MOD(HDMI_WP, HDMI_WP_AUDIO_CTRL, 0, 30, 30);
 }
 
-static int hdmi_w1_audio_config(void)
-{
-	int ret;
-
-	struct hdmi_audio_format audio_fmt;
-	struct hdmi_audio_dma audio_dma;
-
-	audio_fmt.justify = HDMI_AUDIO_JUSTIFY_LEFT;
-	audio_fmt.sample_number = HDMI_ONEWORD_ONE_SAMPLE;
-	audio_fmt.sample_size = HDMI_SAMPLE_24BITS;
-	audio_fmt.stereo_channel_enable = HDMI_STEREO_ONECHANNELS;
-	audio_fmt.audio_channel_location = 0x03;
-
-	ret = hdmi_w1_audio_config_format(HDMI_WP, &audio_fmt);
-
-	audio_dma.dma_transfer = 0x20;
-	audio_dma.threshold_value = 0x60;
-	audio_dma.dma_or_irq = HDMI_THRESHOLD_DMA;
-
-	ret = hdmi_w1_audio_config_dma(HDMI_WP, &audio_dma);
-
-	return ret;
-}
-
 int hdmi_lib_enable(struct hdmi_config *cfg)
 {
-	u32 r, deep_color = 0;
+	u32 r;
 
 	u32 av_name = HDMI_CORE_AV;
+
 
 	/* HDMI */
 	struct hdmi_video_timing VideoTimingParam;
 	struct hdmi_video_format VideoFormatParam;
 	struct hdmi_video_interface VideoInterfaceParam;
 	struct hdmi_irq_vector IrqHdmiVectorEnable;
-	struct hdmi_audio_format audio_fmt;
-	struct hdmi_audio_dma audio_dma;
 	struct hdmi_s3d_config s3d_param;
 
 	/* HDMI core */
 	struct hdmi_core_video_config_t v_core_cfg;
-	struct hdmi_core_audio_config audio_cfg;
 	struct hdmi_core_packet_enable_repeat repeat_param;
 
 	hdmi_w1_init(&VideoTimingParam, &VideoFormatParam,
 		&VideoInterfaceParam, &IrqHdmiVectorEnable,
-		&audio_fmt, &audio_dma);
+		&hdmi.audio_fmt, &hdmi.audio_dma);
 
 	hdmi_core_init(cfg->deep_color, &v_core_cfg,
-		&audio_cfg,
+		&hdmi.audio_core_cfg,
 		&hdmi.avi_param,
 		&repeat_param);
 
@@ -1421,7 +1698,9 @@ int hdmi_lib_enable(struct hdmi_config *cfg)
 	val |= ((0x1f) << 27); /* wakeup */
 	hdmi_write_reg(HDMI_WP, HDMI_WP_VIDEO_SIZE, val);
 #endif
-	hdmi_w1_audio_config();
+	hdmi_w1_audio_config_format(HDMI_WP, &hdmi.audio_fmt);
+	hdmi_w1_audio_config_dma(HDMI_WP, &hdmi.audio_dma);
+
 
 	/****************************** CORE *******************************/
 	/************* configure core video part ********************************/
@@ -1433,51 +1712,12 @@ int hdmi_lib_enable(struct hdmi_config *cfg)
 
 	v_core_cfg.CoreHdmiDvi = cfg->hdmi_dvi;
 
-	/* hnagalla */
-	audio_cfg.fs = 0x02;
-	audio_cfg.if_fs = 0x00;
-	audio_cfg.n = 6144;
-
-	r = hdmi_read_reg(HDMI_WP, HDMI_WP_VIDEO_CFG);
-	switch(r & 0x03) {
-	case 1:
-		deep_color = 100;
-		break;
-	case 2:
-		deep_color = 125;
-		break;
-	case 3:
-		deep_color = 150;
-		break;
-	case 4:
-		printk(KERN_ERR "Invalid deep color configuration, "
-				"using no deep-color\n");
-		deep_color = 100;
-		break;
-	}
-
-	if (omap_rev() == OMAP4430_REV_ES1_0)
-		audio_cfg.cts = cfg->pixel_clock;
-	else
-		audio_cfg.cts = (cfg->pixel_clock * deep_color) / 100;
-
-	/* audio channel */
-	audio_cfg.if_sample_size = 0x0;
-	audio_cfg.layout = 0;
-	audio_cfg.if_channel_number = 2;
-	audio_cfg.if_audio_channel_location = 0x00;
-
-	if (omap_rev() == OMAP4430_REV_ES1_0) {
-		audio_cfg.aud_par_busclk = (((128 * 31) - 1) << 8);
-		audio_cfg.cts_mode = CTS_MODE_HW;
-	} else {
-		audio_cfg.aud_par_busclk = 0;
-		audio_cfg.cts_mode = CTS_MODE_SW;
-	}
+	hdmi.pixel_clock = cfg->pixel_clock;
+	hdmi_configure_acr(hdmi.pixel_clock);
 
 	r = hdmi_core_video_config(&v_core_cfg);
 
-	hdmi_core_audio_config(av_name, &audio_cfg);
+	hdmi_core_audio_config(av_name, &hdmi.audio_core_cfg);
 	hdmi_core_audio_mode_enable(av_name);
 
 	/* release software reset in the core */
@@ -1491,11 +1731,36 @@ int hdmi_lib_enable(struct hdmi_config *cfg)
 	hdmi.avi_param.db1b_no_vert_hori_verthori = INFOFRAME_AVI_DB1B_NO;
 	hdmi.avi_param.db1s_0_1_2 = INFOFRAME_AVI_DB1S_0;
 	hdmi.avi_param.db2c_no_itu601_itu709_extented = INFOFRAME_AVI_DB2C_NO;
-	hdmi.avi_param.db2m_no_43_169 = INFOFRAME_AVI_DB2M_NO;
+
+	/* Support AR in AVI infoframe */
+	switch (cfg->video_format) {
+	/* 16:9 */
+	case 4:
+	case 5:
+	case 16:
+	case 19:
+	case 20:
+	case 31:
+	case 32:
+	case 39:
+		hdmi.avi_param.db2m_no_43_169 = INFOFRAME_AVI_DB2M_169;
+		break;
+	/* 4:3 */
+	case 1:
+	case 2:
+	case 6:
+	case 17:
+	case 21:
+	case 29:
+	case 35:
+	case 37:
+		hdmi.avi_param.db2m_no_43_169 = INFOFRAME_AVI_DB2M_43;
+		break;
+	}
+
 	hdmi.avi_param.db2r_same_43_169_149 = INFOFRAME_AVI_DB2R_SAME;
 	hdmi.avi_param.db3itc_no_yes = INFOFRAME_AVI_DB3ITC_NO;
 	hdmi.avi_param.db3ec_xvyuv601_xvyuv709 = INFOFRAME_AVI_DB3EC_XVYUV601;
-	hdmi.avi_param.db3q_default_lr_fr = INFOFRAME_AVI_DB3Q_DEFAULT;
 	hdmi.avi_param.db3sc_no_hori_vert_horivert = INFOFRAME_AVI_DB3SC_NO;
 	hdmi.avi_param.db4vic_videocode = cfg->video_format;
 	hdmi.avi_param.db5pr_no_2_3_4_5_6_7_8_9_10 = INFOFRAME_AVI_DB5PR_NO;
@@ -1516,27 +1781,84 @@ int hdmi_lib_enable(struct hdmi_config *cfg)
 		repeat_param.GenericPacketRepeat = PACKETREPEATON;
 	}
 
-	/* enable/repeat the infoframe */
-	repeat_param.AVIInfoFrameED = PACKETENABLE;
-	repeat_param.AVIInfoFrameRepeat = PACKETREPEATON;
-	/* wakeup */
-	repeat_param.AudioPacketED = PACKETENABLE;
-	repeat_param.AudioPacketRepeat = PACKETREPEATON;
-	/* ISCR1 transmission */
-	repeat_param.MPEGInfoFrameED = PACKETENABLE;
-	repeat_param.MPEGInfoFrameRepeat = PACKETREPEATON;
-	/* ACP transmission */
-	repeat_param.SPDInfoFrameED = PACKETENABLE;
-	repeat_param.SPDInfoFrameRepeat = PACKETREPEATON;
+
+	if (cfg->hdmi_dvi == 1) {
+		/* HDMI mode */
+
+		/* enable/repeat the infoframe */
+		repeat_param.AVIInfoFrameED = PACKETENABLE;
+		repeat_param.AVIInfoFrameRepeat = PACKETREPEATON;
+		/* wakeup */
+		repeat_param.AudioPacketED = PACKETENABLE;
+		repeat_param.AudioPacketRepeat = PACKETREPEATON;
+		/* ISCR1 transmission */
+		repeat_param.MPEGInfoFrameED = PACKETDISABLE;
+		repeat_param.MPEGInfoFrameRepeat = PACKETREPEATOFF;
+		/* ACP transmission */
+		repeat_param.SPDInfoFrameED = cfg->supports_ai;
+		repeat_param.SPDInfoFrameRepeat = cfg->supports_ai;
+	} else {
+		/* DVI mode */
+
+		/* enable/repeat the infoframe */
+		repeat_param.AVIInfoFrameED = PACKETDISABLE;
+		repeat_param.AVIInfoFrameRepeat = PACKETREPEATOFF;
+		/* wakeup */
+		repeat_param.AudioPacketED = PACKETDISABLE;
+		repeat_param.AudioPacketRepeat = PACKETREPEATOFF;
+		/* ISCR1 transmission */
+		repeat_param.MPEGInfoFrameED = PACKETDISABLE;
+		repeat_param.MPEGInfoFrameRepeat = PACKETREPEATOFF;
+		/* ACP transmission */
+		repeat_param.SPDInfoFrameED = PACKETDISABLE;
+		repeat_param.SPDInfoFrameRepeat = PACKETREPEATOFF;
+	}
 
 	r = hdmi_core_av_packet_config(av_name, repeat_param);
 
 	REG_FLD_MOD(av_name, HDMI_CORE_AV__HDMI_CTRL, cfg->hdmi_dvi, 0, 0);
+
+#ifdef CONFIG_OMAP_HDMI_AUDIO_WA
+// TI_UPDATE_S sang-il.lee 2011-05-18 for HDMI ACR workaround
+#if 0
+	if (omap_chip_is(hdmi.audio_wa_chip_ids)) {
+		if (hdmi.notify_event_reg == HDMI_NOTIFY_EVENT_NOTREG) {
+			r = ipc_register_notifier(&hdmi_syslink_notify_block);
+			hdmi.notify_event_reg = HDMI_NOTIFY_WAIT_FOR_IPC;
+		}
+	}
+#else
+	u16 procId;
+	if (omap_chip_is(hdmi.audio_wa_chip_ids)) {
+		procId = multiproc_get_id("SysM3");
+		hdmi_syslink_notifier_call(IPC_START, (void *)&procId);
+	}
+#endif
+// TI_UPDATE_E sang-il.lee 2011-05-18 for HDMI ACR workaround
+
+#endif //CONFIG_OMAP_HDMI_AUDIO_WA
 	return r;
 }
 
-int hdmi_lib_init(void){
-	u32 rev;
+/**
+ * hdmi_lib_init - Initializes hdmi library
+ *
+ * hdmi_lib_init is expected to be called by any user of the hdmi library (e.g.
+ * HDMI video driver, HDMI audio driver). This means that it is not safe to add
+ * anything in this function that requires the DSS clocks to be enabled.
+ */
+int hdmi_lib_init(void)
+{
+	static u8 initialized;
+
+	mutex_lock(&hdmi_mutex);
+	if (initialized) {
+		printk(KERN_INFO "hdmi_lib already initialized\n");
+		mutex_unlock(&hdmi_mutex);
+		return 0;
+	}
+	initialized = 1;
+	mutex_unlock(&hdmi_mutex);
 
 	hdmi.base_wp = ioremap(HDMI_WP, (HDMI_HDCP - HDMI_WP));
 
@@ -1547,19 +1869,44 @@ int hdmi_lib_init(void){
 
 	hdmi.base_core = hdmi.base_wp + 0x400;
 	hdmi.base_core_av = hdmi.base_wp + 0x900;
+#ifdef CONFIG_OMAP_HDMI_AUDIO_WA
+	hdmi.notify_event_reg = HDMI_NOTIFY_EVENT_NOTREG;
+// LGE_UPDATE_S 2011-08-12 for ES2.3
+	hdmi.audio_wa_chip_ids.oc = CHIP_IS_OMAP4430ES2 |
+			CHIP_IS_OMAP4430ES2_1 | CHIP_IS_OMAP4430ES2_2 | CHIP_IS_OMAP4430ES2_3;
+// LGE_UPDATE_E 2011-08-12 for ES2.3
+/* LGE_CHANGE [sanggu.han@lge.com] 2011-10-05 CX2 Base Version making*/
+///# LGE_CHANGE_S
+#if defined (CONFIG_MACH_LGE_CX2)
+	hdmi.audio_wa_started = false;
+#endif
+///# LGE_CHANGE_E
+#endif
 
-	mutex_init(&hdmi.mutex);
 	INIT_LIST_HEAD(&hdmi.notifier_head);
 
-	rev = hdmi_read_reg(HDMI_WP, HDMI_WP_REVISION);
-	printk(KERN_INFO "OMAP HDMI W1 rev %d.%d\n",
-		FLD_GET(rev, 10, 8), FLD_GET(rev, 5, 0));
-
+	/* LGE_CHANGE_S [wonki.choi@lge.com] HDMI Audio Stop wait 2011-4-09*/
+	hdmi.audio_enable = false;
+	init_waitqueue_head(&hdmi.audio_disable_wq);
+	hdmi.device_connected = false;
+	/* LGE_CHANGE_E [wonki.choi@lge.com] 2011-4-09 */
 	return 0;
 }
 
 void hdmi_lib_exit(void){
 	iounmap(hdmi.base_wp);
+#ifdef CONFIG_OMAP_HDMI_AUDIO_WA
+// TI_UPDATE_S sang-il.lee 2011-05-18 for HDMI ACR workaround
+#if 0
+	if (omap_chip_is(hdmi.audio_wa_chip_ids))
+		ipc_unregister_notifier(&hdmi_syslink_notify_block);
+#else
+	u16 procId;
+	procId = multiproc_get_id("SysM3");
+	hdmi_syslink_notifier_call(IPC_STOP, (void *)&procId);
+#endif		
+// TI_UPDATE_E sang-il.lee 2011-05-18 for HDMI ACR workaround
+#endif //CONFIG_OMAP_HDMI_AUDIO_WA
 }
 
 int hdmi_set_irqs(int i)
@@ -1624,9 +1971,11 @@ void HDMI_W1_HPD_handler(int *r)
 			set = hdmi_read_reg(HDMI_CORE_SYS, HDMI_CORE_SYS__SYS_STAT);
 			hpd_intr = hdmi_read_reg(HDMI_CORE_SYS, HDMI_CORE_SYS__INTR1);
 
-			hdmi_write_reg(HDMI_WP, HDMI_WP_IRQSTATUS, val);
-			/* flush posted write */
-			hdmi_read_reg(HDMI_WP, HDMI_WP_IRQSTATUS);
+			hdmi_write_reg(HDMI_CORE_SYS, HDMI_CORE_SYS__INTR1,
+							hpd_intr);
+
+			/* Read to flush */
+			hdmi_read_reg(HDMI_CORE_SYS, HDMI_CORE_SYS__INTR1);
 		}
 	}
 
@@ -1710,10 +2059,14 @@ int hdmi_rxdet(void)
 	hdmi_write_reg(HDMI_WP, HDMI_WP_WP_DEBUG_CFG, 0);
 
 	if (loop == 100)
-		state = -1;
+		/* LGE_CHANGE [wonki.choi@lge.com] bug??? 2011-4-09 */
+		//state = -1;
+		state = 0;
 	else
 		state = (val1 & 1);
 
+/* LGE_CHANGE [wonki.choi@lge.com] DSS not sleep 2011-6-28 */
+#if !defined(CONFIG_MACH_LGE_COSMOPOLITAN)
 	/* Turn on the wakeup capability of the interrupts
 	It is recommended to turn on opposite interrupt wake
 	up capability in connected and disconnected state.
@@ -1732,6 +2085,8 @@ int hdmi_rxdet(void)
 		IrqHdmiVectorEnable.phyConnect = 1;
 		hdmi_w1_irq_wakeup_enable(&IrqHdmiVectorEnable);
 	}
+#endif
+/* LGE_CHANGE_E [wonki.choi@lge.com] 2011-6-28 */
 
 	return state;
 }
@@ -1826,9 +2181,9 @@ int hdmi_w1_start_audio_transfer(u32 instanceName)
 
 void hdmi_add_notifier(struct hdmi_notifier *notifier)
 {
-	mutex_lock(&hdmi.mutex);
+	mutex_lock(&hdmi_mutex);
 	list_add_tail(&notifier->list, &hdmi.notifier_head);
-	mutex_unlock(&hdmi.mutex);
+	mutex_unlock(&hdmi_mutex);
 }
 
 void hdmi_remove_notifier(struct hdmi_notifier *notifier)
@@ -1837,9 +2192,9 @@ void hdmi_remove_notifier(struct hdmi_notifier *notifier)
 
 	list_for_each_entry_safe(cur, next, &hdmi.notifier_head, list) {
 		if (cur == notifier) {
-			mutex_lock(&hdmi.mutex);
+			mutex_lock(&hdmi_mutex);
 			list_del(&cur->list);
-			mutex_unlock(&hdmi.mutex);
+			mutex_unlock(&hdmi_mutex);
 		}
 	}
 }
@@ -1863,3 +2218,238 @@ void hdmi_notify_pwrchange(int state)
 			cur->pwrchange_notifier(state, cur->private_data);
 	}
 }
+
+
+int hdmi_configure_audio_sample_freq(u32 sample_freq)
+{
+	int err = 0;
+
+	switch (sample_freq) {
+	case 48000:
+		hdmi.audio_core_cfg.fs = FS_48000;
+		break;
+	case 44100:
+		hdmi.audio_core_cfg.fs = FS_44100;
+		break;
+	case 32000:
+		hdmi.audio_core_cfg.fs = FS_32000;
+		break;
+	default:
+		return -EINVAL;
+	}
+	err = hdmi_configure_acr(hdmi.pixel_clock);
+	if (err)
+		return err;
+
+	hdmi_core_audio_config(HDMI_CORE_AV, &hdmi.audio_core_cfg);
+
+	return err;
+}
+
+int hdmi_configure_audio_sample_size(u32 sample_size)
+{
+	u32 r;
+	hdmi.audio_core_cfg.if_sample_size = IF_NO_PER_SAMPLE;
+	hdmi.audio_fmt.left_before = HDMI_SAMPLE_LEFT_FIRST;
+
+	switch (sample_size) {
+	case HDMI_SAMPLE_16BITS:
+		hdmi.audio_core_cfg.i2schst_max_word_length =
+			I2S_CHST_WORD_MAX_20;
+		hdmi.audio_core_cfg.i2schst_word_length = I2S_CHST_WORD_16_BITS;
+		hdmi.audio_core_cfg.i2s_in_bit_length = I2S_IN_LENGTH_16;
+		hdmi.audio_core_cfg.i2s_justify = HDMI_AUDIO_JUSTIFY_LEFT;
+		hdmi.audio_fmt.sample_number = HDMI_ONEWORD_TWO_SAMPLES;
+		hdmi.audio_fmt.sample_size = HDMI_SAMPLE_16BITS;
+		hdmi.audio_fmt.justify = HDMI_AUDIO_JUSTIFY_LEFT;
+		break;
+	case HDMI_SAMPLE_24BITS:
+		hdmi.audio_core_cfg.i2schst_max_word_length =
+			I2S_CHST_WORD_MAX_24;
+		hdmi.audio_core_cfg.i2schst_word_length = I2S_CHST_WORD_24_BITS;
+		hdmi.audio_core_cfg.i2s_in_bit_length = I2S_IN_LENGTH_24;
+		hdmi.audio_core_cfg.i2s_justify = HDMI_AUDIO_JUSTIFY_RIGHT;
+		hdmi.audio_fmt.sample_number = HDMI_ONEWORD_ONE_SAMPLE;
+		hdmi.audio_fmt.sample_size = HDMI_SAMPLE_24BITS;
+		hdmi.audio_fmt.justify = HDMI_AUDIO_JUSTIFY_RIGHT;
+		break;
+	default:
+		return -EINVAL;
+	}
+	hdmi_core_audio_config(HDMI_CORE_AV, &hdmi.audio_core_cfg);
+	r = hdmi_read_reg(HDMI_WP, HDMI_WP_AUDIO_CTRL);
+	if (r & 0x80000000)
+		REG_FLD_MOD(HDMI_WP, HDMI_WP_AUDIO_CTRL, 0, 31, 31);
+	hdmi_w1_audio_config_format(HDMI_WP, &hdmi.audio_fmt);
+	if (r & 0x80000000)
+		REG_FLD_MOD(HDMI_WP, HDMI_WP_AUDIO_CTRL, 1, 31, 31);
+	return 0;
+}
+/* LGE_CHANGE_S [wonki.choi@lge.com] HDMI rework 2011-4-09*/
+
+//-------------------------------------------------------------------------
+//	IRQ related functions
+
+//Set Irq
+void HDMI_WP_IRQ_set(u32 set)
+{
+	u32 cur;
+	cur = hdmi_read_reg(HDMI_WP, HDMI_WP_IRQENABLE_SET);
+	cur |= set;
+	printk("HDMI WP IRQ Set 0x%08x\n", cur);
+	hdmi_write_reg(HDMI_WP, HDMI_WP_IRQENABLE_SET, cur);
+}
+
+void HDMI_WP_IRQ_unset(u32 unset)
+{
+	u32 cur;
+	//read result is current enabled
+	cur = hdmi_read_reg(HDMI_WP, HDMI_WP_IRQENANBLE_CLR);
+	//set writing is disable
+	cur &= unset;
+	printk("HDMI WP IRQ UnSet 0x%08x\n", cur);
+	hdmi_write_reg(HDMI_WP, HDMI_WP_IRQENANBLE_CLR, cur);
+}
+
+void HDMI_WP_IRQ_get_status(u32 *wp_intr)
+{
+	u32 wp_status;
+	wp_status = hdmi_read_reg(HDMI_WP, HDMI_WP_IRQSTATUS);
+
+	if ( wp_intr )
+		*wp_intr = wp_status;
+
+	if ( wp_status & HDMI_IRQ_CORE_INTR )
+	{
+		//do later
+	}
+
+	/* Ack other interrupts if any */
+	hdmi_write_reg(HDMI_WP, HDMI_WP_IRQSTATUS, wp_status);
+	/* flush posted write */
+	hdmi_read_reg(HDMI_WP, HDMI_WP_IRQSTATUS);
+
+	return;
+}
+
+
+int HDMI_HPD_get_status(void)
+{
+	return ( hdmi_read_reg(HDMI_CORE_SYS, HDMI_CORE_SYS__SYS_STAT) & HDMI_CORE_SYS__SYS_STAT_HPD );
+}
+
+void HDMI_device_connected(bool con)
+{
+//	mutex_lock(&hdmi.mutex);
+	hdmi.device_connected = con;
+//	mutex_unlock(&hdmi.mutex);
+}
+
+bool HDMI_is_device_connected(void)
+{
+	bool ret;
+//	mutex_lock(&hdmi.mutex);
+	ret = hdmi.device_connected;
+//	mutex_unlock(&hdmi.mutex);
+	return ret;
+}
+
+bool HDMI_WP_get_video_status(void)
+{
+	return ( hdmi_read_reg(HDMI_WP, HDMI_WP_VIDEO_CFG) & 0x80000000 );
+}
+
+int hdmi_audio_disable_wait(unsigned long milli)
+{
+	return wait_event_timeout(hdmi.audio_disable_wq,
+			hdmi.audio_enable==false,
+			milli * HZ / 1000);
+}
+
+static int hdmi_core_vsi_infoframe_ex(u32 name,
+	struct hdmi_s3d_config info_s3d)
+{
+	u16 offset;
+	u8 sum = 0, i;
+	//Some TV needs last byte for Top/Bottom
+	int length = 6;
+	u8 info_frame_packet[] = {
+		0x81, /*Vendor-Specific InfoFrame*/
+		0x01, /*InfoFrame version number per CEA-861-D*/
+		length, /*InfoFrame length, excluding checksum and header*/
+		0x00, /*Checksum*/
+		0x03, 0x0C, 0x00, /*24-bit IEEE Registration Ident*/
+		(info_s3d.structure ? 0x40 : 0x00), /*3D format indication preset, 3D_Struct follows*/
+		info_s3d.structure << 4, /*3D_Struct, no 3D_Meta*/
+		info_s3d.s3d_ext_data << 4,/*3D_Ext_Data*/
+		};
+
+	/*Adding packet header and checksum length*/
+	length += 4;
+
+	/*Checksum is packet_header+checksum+infoframe_length = 0*/
+	for (i = 0; i < length; i++)
+		sum += info_frame_packet[i];
+	info_frame_packet[3] = 0x100-sum;
+
+	offset = HDMI_CORE_AV__GEN_DBYTE;
+	for (i = 0; i < length; i++) {
+		hdmi_write_reg(name, offset, info_frame_packet[i]);
+		offset += HDMI_CORE_AV__GEN_DBYTE__ELSIZE;
+	}
+
+	return 0;
+}
+
+/**
+ * Set Vender Specific Information defined in HDMI 1.4a 3D extension
+ */
+int HDMI_S3D_VSI_set(struct hdmi_s3d_config *config)
+{
+	int r;
+	u32 val;
+	if ( config==NULL )
+		return -EINVAL;
+	//stop VSI
+	val = hdmi_read_reg(HDMI_CORE_AV, HDMI_CORE_AV_PB_CTRL2);
+	val &= ~((u32)0x03);		//generic packet repeat/transmission disable
+	hdmi_write_reg(HDMI_CORE_AV, HDMI_CORE_AV_PB_CTRL2, val);
+	r = hdmi_core_vsi_infoframe_ex(HDMI_CORE_AV, *config);
+	if ( r )
+		return r;
+	//enable generic packet transmission and repeat
+	val = hdmi_read_reg(HDMI_CORE_AV, HDMI_CORE_AV_PB_CTRL2);
+	val |= 0x01;		//generic packet repeat enable
+	val |= 0x02;		//generic packet transmission enable
+	hdmi_write_reg(HDMI_CORE_AV, HDMI_CORE_AV_PB_CTRL2, val);
+	return 0;
+}
+
+/**
+ * UnSet Vender Specific Information defined in HDMI 1.4a 3D extension
+ */
+int HDMI_S3D_VSI_unset(void)
+{
+	u32 val;
+//	int r;
+//	struct hdmi_s3d_config config;
+	//Stop
+	val = hdmi_read_reg(HDMI_CORE_AV, HDMI_CORE_AV_PB_CTRL2);
+	val &= ~((u32)0x03);		//generic packet repeat/transmission disable
+	hdmi_write_reg(HDMI_CORE_AV, HDMI_CORE_AV_PB_CTRL2, val);
+
+//	config.structure = 0;
+//	config.s3d_ext_data = 0;
+//	r = hdmi_core_vsi_infoframe_ex(HDMI_CORE_AV, config);
+//	if ( r )
+//		return r;
+//	//enable generic packet transmission and repeat
+//	val = hdmi_read_reg(HDMI_CORE_AV, HDMI_CORE_AV_PB_CTRL2);
+//	val |= 0x01;		//generic packet repeat enable
+//	val |= 0x02;		//generic packet transmission enable
+//	hdmi_write_reg(HDMI_CORE_AV, HDMI_CORE_AV_PB_CTRL2, val);
+	return 0;
+}
+
+
+/* LGE_CHANGE_E [wonki.choi@lge.com] 2011-4-09 */

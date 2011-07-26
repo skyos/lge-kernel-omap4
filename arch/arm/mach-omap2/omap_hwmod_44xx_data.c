@@ -652,8 +652,8 @@ static struct omap_hwmod_ocp_if *omap44xx_aess_masters[] = {
 
 static struct omap_hwmod_addr_space omap44xx_aess_addrs[] = {
 	{
-		.pa_start	= 0x49000000,
-		.pa_end		= 0x491f11ff,
+		.pa_start	= 0x40100000,
+		.pa_end		= 0x401f13ff,
 		.flags		= ADDR_TYPE_RT
 	},
 };
@@ -711,6 +711,39 @@ static struct omap_hwmod omap44xx_aess_hwmod = {
 	.masters	= omap44xx_aess_masters,
 	.masters_cnt	= ARRAY_SIZE(omap44xx_aess_masters),
 	.omap_chip	= OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
+};
+
+/*
+ * 'ctrl_module' class
+ * attila core control module
+ */
+
+static struct omap_hwmod_class_sysconfig omap44xx_ctrl_module_sysc = {
+	.rev_offs       = 0x0000,
+	.sysc_offs      = 0x0010,
+	.sysc_flags     = SYSC_HAS_SIDLEMODE,
+	.idlemodes      = (SIDLE_FORCE | SIDLE_NO | SIDLE_SMART |
+						SIDLE_SMART_WKUP),
+	.sysc_fields    = &omap_hwmod_sysc_type2,
+};
+
+static struct omap_hwmod_class omap44xx_ctrl_module_hwmod_class = {
+	.name   = "ctrl_module",
+	.sysc   = &omap44xx_ctrl_module_sysc,
+};
+
+/* ctrl_module_core */
+static struct omap_hwmod_irq_info omap44xx_ctrl_module_core_irqs[] = {
+	{ .name = "sec_evts", .irq = 8 + OMAP44XX_IRQ_GIC_START },
+	{ .name = "thermal_alert", .irq = 126 + OMAP44XX_IRQ_GIC_START },
+};
+
+static struct omap_hwmod_addr_space omap44xx_ctrl_module_core_addrs[] = {
+	{
+		.pa_start       = 0x4a002000,
+		.pa_end         = 0x4a0027ff,
+		.flags          = ADDR_TYPE_RT
+	},
 };
 
 /*
@@ -2212,7 +2245,9 @@ static struct omap_hwmod_class_sysconfig omap44xx_hsi_sysc = {
 			   SYSC_HAS_SIDLEMODE | SYSC_HAS_MIDLEMODE |
 			   SYSC_HAS_SOFTRESET),
 	.idlemodes	= (SIDLE_FORCE | SIDLE_NO | SIDLE_SMART |
-			   MSTANDBY_FORCE | MSTANDBY_NO | MSTANDBY_SMART),
+			   SIDLE_SMART_WKUP |
+			   MSTANDBY_FORCE | MSTANDBY_NO | MSTANDBY_SMART |
+			   MSTANDBY_SMART_WKUP),
 	.sysc_fields	= &omap_hwmod_sysc_type1,
 };
 
@@ -2223,9 +2258,9 @@ static struct omap_hwmod_class omap44xx_hsi_hwmod_class = {
 
 /* hsi */
 static struct omap_hwmod_irq_info omap44xx_hsi_irqs[] = {
-	{ .name = "mpu_p1", .irq = 67 + OMAP44XX_IRQ_GIC_START },
-	{ .name = "mpu_p2", .irq = 68 + OMAP44XX_IRQ_GIC_START },
-	{ .name = "mpu_dma", .irq = 71 + OMAP44XX_IRQ_GIC_START },
+	{ .name = "hsi_p1_mpu", .irq = 67 + OMAP44XX_IRQ_GIC_START },
+	{ .name = "hsi_p2_mpu", .irq = 68 + OMAP44XX_IRQ_GIC_START },
+	{ .name = "hsi_dma_mpu", .irq = 71 + OMAP44XX_IRQ_GIC_START },
 };
 
 /* hsi master ports */
@@ -2262,6 +2297,7 @@ static struct omap_hwmod omap44xx_hsi_hwmod = {
 	.mpu_irqs	= omap44xx_hsi_irqs,
 	.mpu_irqs_cnt	= ARRAY_SIZE(omap44xx_hsi_irqs),
 	.main_clk	= "hsi_fck",
+	.vdd_name	= "core",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_reg = OMAP4430_CM_L3INIT_HSI_CLKCTRL,
@@ -2590,6 +2626,7 @@ static struct omap_hwmod omap44xx_ipu_c1_hwmod = {
 static struct omap_hwmod omap44xx_ipu_hwmod = {
 	.name		= "ipu",
 	.class		= &omap44xx_ipu_hwmod_class,
+	.flags          = HWMOD_INIT_NO_RESET,
 	.mpu_irqs	= omap44xx_ipu_irqs,
 	.mpu_irqs_cnt	= ARRAY_SIZE(omap44xx_ipu_irqs),
 	.rst_lines	= omap44xx_ipu_resets,
@@ -3242,7 +3279,8 @@ static struct omap_hwmod_class_sysconfig omap44xx_mcpdm_sysc = {
 	.sysc_offs	= 0x0010,
 	.sysc_flags	= (SYSC_HAS_EMUFREE | SYSC_HAS_RESET_STATUS |
 			   SYSC_HAS_SIDLEMODE | SYSC_HAS_SOFTRESET),
-	.idlemodes	= (SIDLE_FORCE | SIDLE_NO | SIDLE_SMART),
+	.idlemodes	= (SIDLE_FORCE | SIDLE_NO | SIDLE_SMART |
+			   SIDLE_SMART_WKUP),
 	.sysc_fields	= &omap_hwmod_sysc_type2,
 };
 
@@ -4242,11 +4280,12 @@ static struct omap_hwmod_ocp_if *omap44xx_smartreflex_core_slaves[] = {
 };
 
 static u32 omap44xx_sr_core_efuse_offs[] = {
-	OMAP44XX_CONTROL_FUSE_CORE_OPP50, OMAP44XX_CONTROL_FUSE_CORE_OPP100,
+	OMAP44XX_CONTROL_FUSE_CORE_OPP50, OMAP44XX_CONTROL_FUSE_CORE_OPP50,
+	OMAP44XX_CONTROL_FUSE_CORE_OPP100,
 };
 
 static u32 omap44xx_sr_core_test_nvalues[] = {
-	0x0, 0x0
+	0x0, 0x0, 0x0
 };
 
 static struct omap_sr_dev_data omap44xx_sr_core_dev_attr = {
@@ -4367,12 +4406,13 @@ static struct omap_hwmod_ocp_if *omap44xx_smartreflex_mpu_slaves[] = {
 };
 
 static u32 omap44xx_sr_mpu_efuse_offs[] = {
-	OMAP44XX_CONTROL_FUSE_MPU_OPP50, OMAP44XX_CONTROL_FUSE_MPU_OPP100,
-	OMAP44XX_CONTROL_FUSE_MPU_OPPTURBO, OMAP44XX_CONTROL_FUSE_MPU_OPPNITRO,
+	OMAP44XX_CONTROL_FUSE_MPU_OPP50, OMAP44XX_CONTROL_FUSE_MPU_OPP50,
+	OMAP44XX_CONTROL_FUSE_MPU_OPP100, OMAP44XX_CONTROL_FUSE_MPU_OPPTURBO,
+	OMAP44XX_CONTROL_FUSE_MPU_OPPNITRO,
 };
 
 static u32 omap44xx_sr_mpu_test_nvalues[] = {
-	0x0, 0x0, 0x0, 0x0
+	0x0, 0x0, 0x0, 0x0, 0x0
 };
 
 static struct omap_sr_dev_data omap44xx_sr_mpu_dev_attr = {

@@ -209,13 +209,20 @@ int __init reboot_setup(char *str)
 
 __setup("reboot=", reboot_setup);
 
+#include <linux/i2c/twl.h>
+#include <plat/prcm.h>
+
 void machine_halt(void)
 {
 #ifdef CONFIG_SMP
-	smp_send_stop();
 #endif
+
 	printk(KERN_EMERG "System halted, OK to turn off power\n");
+
+	twl_i2c_write_u8(TWL_MODULE_PM_MASTER, 0x07, 0x06);
+
 	local_irq_disable();
+
 	while (1) ;
 }
 

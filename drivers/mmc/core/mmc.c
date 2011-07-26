@@ -322,6 +322,8 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	u32 cid[4];
 	unsigned int max_dtr;
 
+	u32 rocr[1]; // Add to select card access mode 10K0419
+
 	BUG_ON(!host);
 	WARN_ON(!host->claimed);
 
@@ -334,7 +336,10 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	mmc_go_idle(host);
 
 	/* The extra bit indicates that we support high capacity */
-	err = mmc_send_op_cond(host, ocr | (1 << 30), NULL);
+
+	//err = mmc_send_op_cond(host, ocr | (1 << 30), NULL); // comment 10K0419
+	err = mmc_send_op_cond(host, ocr | (1 << 30), rocr); // Add to select card access mode 10K0419
+
 	if (err)
 		goto err;
 
@@ -422,6 +427,12 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 		err = mmc_read_ext_csd(card);
 		if (err)
 			goto free_card;
+
+		 // Add to select card access mode 10K0419
+		 if (rocr[0] & MMC_ACCESS_MODE) // Higher than 2GB
+					mmc_card_set_blockaddr(card);
+		 // Add to select card access mode 10K0419
+
 	}
 
 	/*
