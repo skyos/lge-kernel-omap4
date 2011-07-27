@@ -309,6 +309,14 @@ config TOUCHSCREEN_SYNAPTICS_I2C_RMI
 	help
 	  This enables support for Synaptics RMI over I2C based touchscreens.
 
+config TOUCHSCREEN_ANDROID_VIRTUALKEYS
+        boolean "Support userspace-managed virtual keys on android"
+        depends on TOUCHSCREEN_COSMO_TM1709
+        default y
+        help
+          Replaces the direct key events with a sysfs file with the key coordinates
+          to be used by Android userspace for the capacitive keys
+
 config TOUCHSCREEN_TOUCHRIGHT
 	tristate "Touchright serial touchscreen"
 	select SERIO

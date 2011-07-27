@@ -304,6 +304,33 @@ struct timeval oldtime;
 struct timeval newtime;
 #endif
 
+#ifdef CONFIG_TOUCHSCREEN_ANDROID_VIRTUALKEYS
+short virtual_down = 0;
+#endif
+
+void report_virtual_key(struct input_dev *input_dev, int position, int state) {
+#ifdef CONFIG_TOUCHSCREEN_ANDROID_VIRTUALKEYS
+        /* Ugly hack. Report a fixed coordinate for 
+         * each button: It doesn't really matter, as
+         * long as it falls within the board-defined
+         * map*/
+        if (state) {
+                input_report_abs(input_dev, ABS_MT_TOUCH_MAJOR, 40);
+                input_report_abs(input_dev, ABS_MT_WIDTH_MAJOR, 4);
+                input_report_abs(input_dev, ABS_MT_POSITION_X, ((position+1)*280)-140);
+                input_report_abs(input_dev, ABS_MT_POSITION_Y, 2100);
+                virtual_down = 1;
+        } else {
+                virtual_down = 0;
+                input_report_abs(input_dev, ABS_MT_TOUCH_MAJOR, 0);
+        }
+        input_mt_sync(input_dev);
+
+#else
+        input_report_key(input_dev, button_map[position], state);
+#endif
+}
+
 static int omap_virtualkeymap[] = {
 	KEY_1,				
 	KEY_2,
@@ -416,7 +443,7 @@ static int synaptics_ts_handle_detected_touch_key(struct synaptics_ts_data* ts,i
 	{
 		//pending is handled , so send event normally
 		DEBUG_MSG("%s() 1 btn_index[%d] Press \n", __func__, button_map[btn_index]);
-		input_report_key(ts->input_dev, button_map[btn_index], 1);
+		report_virtual_key(ts->input_dev, btn_index, 1);
 		input_sync(ts->input_dev);	
 		ts->button_state = (1 << btn_index);
 	}
@@ -436,7 +463,7 @@ static int synaptics_ts_handle_detected_touch_key(struct synaptics_ts_data* ts,i
 			ts->pending_touchkey = COSMO_PENDING_HANDLED;
 			
 			DEBUG_MSG("%s() 2 btn_index[%d] Press \n", __func__, button_map[btn_index]);
-			input_report_key(ts->input_dev, button_map[btn_index], 1);
+			report_virtual_key(ts->input_dev, btn_index, 1);
 			input_sync(ts->input_dev);	
 		}
 		else
@@ -469,10 +496,10 @@ static void synaptics_ts_handle_detected_whole_up_event(struct synaptics_ts_data
 	{
 		DEBUG_MSG("%s() 3 btn_index[%d] Press \n", __func__, button_map[ts->pending_touchkey]);
 
-		input_report_key(ts->input_dev, button_map[ts->pending_touchkey], 1);
+		report_virtual_key(ts->input_dev, ts->pending_touchkey, 1);
 		input_sync(ts->input_dev);
 		DEBUG_MSG("%s() 4 btn_index[%d] Release \n", __func__, button_map[ts->pending_touchkey]);
-		input_report_key(ts->input_dev, button_map[ts->pending_touchkey], 0);
+		report_virtual_key(ts->input_dev, ts->pending_touchkey, 0);
 		input_sync(ts->input_dev);
 
 		ts->pending_touchkey = COSMO_PENDING_IDLE_STATE;
@@ -488,7 +515,7 @@ static void synaptics_ts_handle_detected_whole_up_event(struct synaptics_ts_data
 			if (ts->pending_touchkey == COSMO_PENDING_HANDLED)
 			{
 				DEBUG_MSG("%s() 5 btn_index[%d] Release \n", __func__, button_map[i]);
-				input_report_key(ts->input_dev, button_map[i], 0);
+				report_virtual_key(ts->input_dev, i, 0);
 				input_sync(ts->input_dev);
 			}
 		}
@@ -901,7 +928,7 @@ static int synaptics_handle_single_touch(struct synaptics_ts_data* ts, int finge
 							// in button range
 							ret = synaptics_ts_is_more_pressed_touch(finger_index+1);
 							if(ts->button_state==0 && ts_pre_state == 0) {
-									int btn_index = synaptics_ts_get_burton_index(ts,curr_ts_data.X_position[0],curr_ts_data.Y_position[0]);
+								int btn_index = synaptics_ts_get_burton_index(ts,curr_ts_data.X_position[0],curr_ts_data.Y_position[0]);
 									
 								#ifdef COSMO_PENDING_TOUCHKEY
 								if(btn_index < COSMO_VALID_TOUCHKEY_COUNT)
@@ -920,7 +947,7 @@ static int synaptics_handle_single_touch(struct synaptics_ts_data* ts, int finge
 											if (ts->pending_touchkey == COSMO_PENDING_HANDLED)
 											{
 												DEBUG_MSG("%s() 8 btn_index[%d] Release \n", __func__, button_map[i]);
-												input_report_key(ts->input_dev, button_map[i], 0);
+												report_virtual_key(ts->input_dev, i, 0);
 												input_sync(ts->input_dev);
 											}
 										}
@@ -930,11 +957,11 @@ static int synaptics_handle_single_touch(struct synaptics_ts_data* ts, int finge
 									ts->pending_touchkey = COSMO_PENDING_IDLE_STATE;									
 								}
 								#else
-									input_report_key(ts->input_dev, button_map[btn_index], 1);
+									report_virtual_key(ts->input_dev, btn_index, 1);
 									input_sync(ts->input_dev);	
 									ts->button_state = (1 << btn_index);
 								#endif
-							}
+                                                        }
 				}else {
 							#ifdef COSMO_PENDING_TOUCHKEY
 							if(finger_index == 0 && ts->pending_touchkey == COSMO_PENDING_HANDLED)
@@ -1025,7 +1052,7 @@ static int synaptics_handle_single_touch(struct synaptics_ts_data* ts, int finge
 			const u32 mask = (1 << i);
 			if ((ts->button_state & mask)) {
 				DEBUG_MSG("%s() 6 btn_index[%d] Press \n", __func__, button_map[i]);
-				input_report_key(ts->input_dev, button_map[i], 0);
+				report_virtual_key(ts->input_dev, i, 0);
 				input_sync(ts->input_dev);
 				}
 			}
@@ -1139,7 +1166,7 @@ static void synaptics_ts_touchkey_delayed_work(struct work_struct *work)
 	if(ts->pending_touchkey >= 0)
 	{
 		DEBUG_MSG("%s() 7 btn_index[%d] Press \n", __func__, button_map[ts->pending_touchkey]);
-		input_report_key(ts->input_dev, button_map[ts->pending_touchkey], 1);
+		report_virtual_key(ts->input_dev, ts->pending_touchkey, 1);
 		input_sync(ts->input_dev);	
 		ts->button_state = (1 << ts->pending_touchkey);
 		
@@ -1330,7 +1357,8 @@ static void synaptics_ts_work_func(struct work_struct *work)
 			i++;
 		} while(is_next_finger_existed == 1 && i < FINGER_MAX)		;
 
-		input_mt_sync(ts->input_dev);               
+                if (!virtual_down)
+		        input_mt_sync(ts->input_dev);               
 		input_sync(ts->input_dev);	
 	}
 	

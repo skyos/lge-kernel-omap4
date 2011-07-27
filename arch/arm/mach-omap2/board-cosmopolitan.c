@@ -1437,6 +1437,53 @@ static struct lm3559_platform_data	lm3559_pdata = {
 	.gpio_hwen	=	191,
 };
 #endif
+
+#ifdef CONFIG_TOUCHSCREEN_ANDROID_VIRTUALKEYS
+static ssize_t cosmo_virtual_keys_show(struct kobject *kobj,
+               struct kobj_attribute *attr, char *buf)
+{
+       /* Dimensions, 80x80, y starts at 830
+       center: x: menu: 75, home: 185, back: 295, search 405, y: 880 */
+       return sprintf(buf,
+                       __stringify(EV_KEY) ":" __stringify(KEY_MENU)  ":75:880:80:80"
+                       ":" __stringify(EV_KEY) ":" __stringify(KEY_HOME)   ":185:880:80:80"
+                       ":" __stringify(EV_KEY) ":" __stringify(KEY_BACK)   ":295:880:80:80"
+                       ":" __stringify(EV_KEY) ":" __stringify(KEY_SEARCH) ":405:880:80:80"
+                       "\n");
+}
+
+static struct kobj_attribute cosmo_virtual_keys_attr = {
+       .attr = {
+               .name = "virtualkeys.heaven_synaptics_touch",
+               .mode = S_IRUGO,
+       },
+       .show = &cosmo_virtual_keys_show,
+};
+
+static struct attribute *cosmo_properties_attrs[] = {
+       &cosmo_virtual_keys_attr.attr,
+       NULL
+};
+
+static struct attribute_group cosmo_properties_attr_group = {
+       .attrs = cosmo_properties_attrs,
+};
+
+static int __init cosmo_init_android_virtualkeys(void)
+{
+       struct kobject *properties_kobj;
+
+       properties_kobj = kobject_create_and_add("board_properties", NULL);
+       if (properties_kobj) {
+               if (sysfs_create_group(properties_kobj,
+                                       &cosmo_properties_attr_group))
+                       pr_err("failed to create board_properties\n");
+       } else {
+               pr_err("failed to create board_properties\n");
+       }
+}
+#endif
+
 #if defined(CONFIG_MPU_SENSORS_MPU3050) || defined(CONFIG_SENSORS_MPU3050_MODULE)
 #include <linux/mpu.h>
 
@@ -2361,6 +2408,10 @@ static void __init lge_cosmopolitan_init(void)
 	}
 	omap_sfh7741prox_init();
 	omap_cma3000accl_init();
+#endif
+
+#ifdef CONFIG_TOUCHSCREEN_ANDROID_VIRTUALKEYS
+        cosmo_init_android_virtualkeys();
 #endif
 
 #ifdef CONFIG_SPI_IFX
