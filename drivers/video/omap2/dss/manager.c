@@ -1326,44 +1326,6 @@ static int omap_dss_mgr_apply(struct omap_overlay_manager *mgr)
 	struct writeback_cache_data *wbc;
 	DSSDBG("omap_dss_mgr_apply(%s)\n", mgr->name);
 
-	#if defined(CONFIG_MACH_LGE_COSMOPOLITAN)
-		if(mgr->device && mgr->device->driver && mgr->device->driver->enable_s3d) {
-			enum omap_dss_overlay_s3d_type s3d_type = omap_dss_overlay_s3d_none;
-			struct s3d_disp_info s3d_info;
-			for (i = 0; i < omap_dss_get_num_overlays(); i++) {
-				ovl = omap_dss_get_overlay(i);
-				if ( !ovl->info.enabled || ovl->manager != mgr || ovl->info.out_wb )
-					continue;
-				s3d_type |= ovl->info.s3d_type;
-			}
-			switch ( s3d_type )
-			{
-			case omap_dss_overlay_s3d_top_bottom:
-				s3d_info.type = S3D_DISP_OVERUNDER;
-				s3d_info.sub_samp = S3D_DISP_SUB_SAMPLE_NONE;
-				break;
-			case omap_dss_overlay_s3d_side_by_side:
-				s3d_info.type = S3D_DISP_SIDEBYSIDE;
-				s3d_info.sub_samp = S3D_DISP_SUB_SAMPLE_H;
-				break;
-			case omap_dss_overlay_s3d_interlaced:
-				s3d_info.type = S3D_DISP_COL_IL;
-				break;
-			default:
-				s3d_info.type = S3D_DISP_NONE;
-				break;
-			}
-			if ( s3d_info.type== S3D_DISP_NONE )
-				mgr->device->driver->enable_s3d(mgr->device, 0);
-			else
-			{
-				if(mgr->device->driver->set_s3d_disp_type)
-					mgr->device->driver->set_s3d_disp_type(mgr->device, &s3d_info);
-				mgr->device->driver->enable_s3d(mgr->device, 1);
-			}
-		}
-	#endif
-
 	if (!dss_get_mainclk_state()) {
 		DSSERR("mainclk disabled while trying"
 			"mgr_apply, returning\n");
