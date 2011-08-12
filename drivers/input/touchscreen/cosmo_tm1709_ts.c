@@ -2022,10 +2022,10 @@ static int synaptics_ts_probe(
 	set_bit(KEY_HOME, ts->input_dev->keybit);
     	set_bit(KEY_SEARCH, ts->input_dev->keybit);
 
-	for (i = 0; omap_virtualkeymap[i] != 0; i++)
+	/*for (i = 0; omap_virtualkeymap[i] != 0; i++)
 	{
 		set_bit(omap_virtualkeymap[i] , ts->input_dev->keybit);
-	}
+	}*/
 		
 
    	set_bit(EV_TG, ts->input_dev->evbit);
