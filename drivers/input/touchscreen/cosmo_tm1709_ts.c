@@ -164,7 +164,10 @@ struct synaptics_ts_data {
 #endif
 	int duringSuspend;
 	int resetDone;
+	struct work_struct keypad_work;
 };
+
+extern void cosmo_keypad_set_led(int enable);
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void synaptics_ts_early_suspend(struct early_suspend *h);
@@ -1000,7 +1003,11 @@ static int synaptics_handle_single_touch(struct synaptics_ts_data* ts, int finge
 							input_mt_sync(ts->input_dev);	
 							ret = synaptics_ts_is_more_pressed_touch(finger_index+1);
 							DEBUG_MSG("%s() - 1 [%d][%d][%d][%d] \n", __func__, curr_ts_data.X_position[finger_index], curr_ts_data.Y_position[finger_index], ts_reg_data.Z_finger0_reg, width);
-				}	
+				}
+				/* Fire the LED panel when the screen is touched */
+				cosmo_keypad_set_led(1);
+				hrtimer_cancel(&ts->timer);
+				hrtimer_start(&ts->timer, ktime_set(5, 0), HRTIMER_MODE_REL);
 				break;
 			case 1: //second finger special care
 				#ifdef COSMO_PENDING_TOUCHKEY
@@ -1887,7 +1894,17 @@ static bool synaptics_ts_fw_upgrade(struct i2c_client *client)
 
 #endif
 
+static void touchLED_timeout(struct work_struct *wq)
+{
+    cosmo_keypad_set_led(0);
+}
 
+static enum hrtimer_restart touchLED_timer_func(struct hrtimer *timer)
+{
+    struct synaptics_ts_data *ts = container_of(timer, struct synaptics_ts_data, timer);
+    schedule_work(&ts->keypad_work);
+    return HRTIMER_NORESTART;
+}
 
 
 /*************************************************************************************************
@@ -2101,6 +2118,9 @@ static int synaptics_ts_probe(
 		register_early_suspend(&ts->early_suspend);
 #endif
 
+	hrtimer_init(&ts->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	ts->timer.function = touchLED_timer_func;
+        INIT_WORK(&ts->keypad_work, touchLED_timeout);
 
 	DEBUG_MSG(KERN_INFO "synaptics_ts_probe: Start touchscreen %s in %s mode\n", ts->input_dev->name, ts->use_irq ? "interrupt" : "polling");
 	return 0;

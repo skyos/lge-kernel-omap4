@@ -37,6 +37,11 @@ struct keypad_led_data {
 	struct led_classdev keypad_led_class_dev;
 };
 
+void cosmo_keypad_set_led(int enable) {
+	gpio_set_value(KP_LEDS_GPIO, enable ? 1 : 0);
+}
+EXPORT_SYMBOL_GPL(cosmo_keypad_set_led);
+
 static void cosmo_keypad_led_store(struct led_classdev *led_cdev,
 				enum led_brightness value)
 {
