@@ -72,6 +72,8 @@
 #include <linux/spi/ifx_n721_spi.h>
 #include <linux/cosmo/fuel_gauge_max17043.h>
 
+#include <linux/bootmem.h>
+
 #include "mux.h"
 
 #include "hsmmc.h"
@@ -980,7 +982,39 @@ static struct platform_device cosmo_fuel_gauge_device= {
 	.dev.platform_data = &max17043_pdata,
 };
 #endif
+
+#ifdef CONFIG_ANDROID_RAM_CONSOLE
+static struct resource ram_console_resource[] = {
+	{
+		.flags  = IORESOURCE_MEM,
+	}
+};
+
+static struct platform_device ram_console_device = {
+	.name = "ram_console",
+	.id = -1,
+	.num_resources  = ARRAY_SIZE(ram_console_resource),
+	.resource       = ram_console_resource,
+};
+
+static void init_ramconsole_memory() {
+	/* RAM Console can't use alloc_bootmem(), since that zeroes the
+	 * region */
+	unsigned long size = 128 * SZ_1K;
+	/* VRAM address - 128k */
+	ram_console_resource[0].start = 0x86fe0000;
+	ram_console_resource[0].end = ram_console_resource[0].start + size - 1;
+	pr_info("allocating %lu bytes at (%lx physical) for ram console\n",
+			size, (unsigned long)ram_console_resource[0].start);
+	/* We still have to reserve it, though */
+	reserve_bootmem(ram_console_resource[0].start,size,0);
+}
+#endif
+
 static struct platform_device *sdp4430_devices[] __initdata = {
+#ifdef CONFIG_ANDROID_RAM_CONSOLE
+	&ram_console_device,
+#endif
 	//&sdp4430_disp_led,
 	//&sdp4430_proximity_device,
 #if	0	// by dongjin73.kim
@@ -2462,6 +2496,7 @@ static void __init lge_cosmopolitan_map_io(void)
 {
 	omap2_set_globals_443x();
 	omap44xx_map_common_io();
+        init_ramconsole_memory();
 }
 
 MACHINE_START(LGE_COSMOPOLITAN, "OMAP4430 LGE Cosmopolitan board")
