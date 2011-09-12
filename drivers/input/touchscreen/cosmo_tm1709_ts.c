@@ -54,8 +54,8 @@ unsigned char SynapticsFirmware[FW_IMAGE_SIZE];
 #define COSMO_TOUCHKEY_RANGE_TRIM	// for triming touch event out of touchkey range
 #define COSMO_MORE_THREE_FINGER_SPPORT	
 #define COSMO_SYNAPTICS_SUPPORT_FW_UPGRADE
-#define COSMO_TOUCH_GRIP_SUPPRESSION
-#define COSMO_TOUCH_HAND_SUPPRESSION
+//#define COSMO_TOUCH_GRIP_SUPPRESSION
+//#define COSMO_TOUCH_HAND_SUPPRESSION
 //#define COSMO_LONGPRESS_TOUCH_DURING_BOOTING
 #define COSMO_USED_RESET_PIN_IN_SUSPEND
 //#define COSMO_USED_RESET_PIN_IN_SUSPEND_MDELAY
@@ -189,7 +189,7 @@ and other items needed by this module.
 		((int)(high_reg*0x10) + (int)((low_reg&0xF0)/0x10))
 
 #define FINGER_MAX 10 
-#define TS_W  1123
+#define TS_W  1124
 #define TS_H  1872
 
 #ifdef COSMO_PENDING_TOUCHKEY
@@ -394,7 +394,9 @@ static int omap_virtualkeymap[] = {
 
 static bool synaptics_ts_handle_is_ignorearea(int xposition, int yposition)
 {
+#ifdef COSMO_TOUCH_HAND_SUPPRESSION
 	if(g_handIgnoreValue != 0) return false;
+#endif
 
 	if(xposition <= 13   && yposition <= 2)
 	{
