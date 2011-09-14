@@ -33,14 +33,34 @@
  #define DEBUG_MSG(args...)
  #endif
 
+#ifdef CONFIG_EARLYSUSPEND
+#include <linux/earlysuspend.h>
+#endif
+
 struct keypad_led_data {
 	struct led_classdev keypad_led_class_dev;
+#ifdef CONFIG_EARLYSUSPEND
+	struct early_suspend ledpanel_early_suspend;
+#endif
 };
 
 void cosmo_keypad_set_led(int enable) {
 	gpio_set_value(KP_LEDS_GPIO, enable ? 1 : 0);
 }
 EXPORT_SYMBOL_GPL(cosmo_keypad_set_led);
+
+#ifdef CONFIG_EARLYSUSPEND
+static void lp_early_suspend(struct early_suspend *h)
+{
+	gpio_set_value(KP_LEDS_GPIO, 0);
+        return;
+}
+
+static void lp_late_resume(struct early_suspend *h)
+{
+        return;
+}
+#endif
 
 static void cosmo_keypad_led_store(struct led_classdev *led_cdev,
 				enum led_brightness value)
@@ -86,6 +106,14 @@ static int __devinit cosmo_keypad_led_probe(struct platform_device *pdev)
 
 	ret = led_classdev_register(&pdev->dev,
 				    &info->keypad_led_class_dev);
+
+#ifdef CONFIG_EARLYSUSPEND
+	info->ledpanel_early_suspend.suspend = lp_early_suspend;
+	info->ledpanel_early_suspend.resume  = lp_late_resume;
+	info->ledpanel_early_suspend.level   = EARLY_SUSPEND_LEVEL_BLANK_SCREEN;
+	register_early_suspend(&info->ledpanel_early_suspend);
+#endif
+
 	if (ret < 0) {
 		pr_err("[kp_led]: %s: Register led class failed\n", __func__);
 		kfree(info);
@@ -98,6 +126,9 @@ static int __devinit cosmo_keypad_led_probe(struct platform_device *pdev)
 static int cosmo_keypad_led_remove(struct platform_device *pdev)
 {
 	struct keypad_led_data *info = platform_get_drvdata(pdev);
+#ifdef CONFIG_EARLYSUSPEND
+	unregister_early_suspend(&info->ledpanel_early_suspend);
+#endif
 	led_classdev_unregister(&info->keypad_led_class_dev);
 	return 0;
 }

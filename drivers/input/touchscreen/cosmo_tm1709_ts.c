@@ -2270,6 +2270,7 @@ static void synaptics_ts_early_suspend(struct early_suspend *h)
 {
 	struct synaptics_ts_data *ts;
 	ts = container_of(h, struct synaptics_ts_data, early_suspend);
+	hrtimer_cancel(&ts->timer);
 	synaptics_ts_suspend(ts->client, PMSG_SUSPEND);
 }
 
