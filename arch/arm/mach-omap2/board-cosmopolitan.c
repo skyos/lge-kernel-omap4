@@ -2336,6 +2336,27 @@ static struct omap_board_mux board_mux[] __initdata = {
 #define board_mux	NULL
 #endif
 #endif
+
+extern unsigned int system_serial_low;
+extern unsigned int system_serial_high;
+#define DIE_ID_REG_BASE         (L4_44XX_PHYS + 0x2000)
+#define DIE_ID_REG_OFFSET               0x200
+
+static void cosmo_add_serialnumber(void)
+{
+	unsigned int reg = DIE_ID_REG_BASE + DIE_ID_REG_OFFSET;
+	unsigned int val[4] = { 0 };
+
+	val[0] = omap_readl(reg);
+	val[1] = omap_readl(reg + 0x8); 
+	val[2] = omap_readl(reg + 0xC); 
+	val[3] = omap_readl(reg + 0x10);
+
+	system_serial_low = val[0] * val[1];
+	system_serial_high = val[2] * val[3];
+
+}
+
 static void __init lge_cosmopolitan_init(void)
 {
 	int status;
@@ -2361,6 +2382,7 @@ static void __init lge_cosmopolitan_init(void)
 	#else
 	omap_display_init(&sdp4430_dss_data);
 	#endif
+	cosmo_add_serialnumber();
 	platform_add_devices(sdp4430_devices, ARRAY_SIZE(sdp4430_devices));
 	conn_add_plat_device(); /* Added for FlexST */
 //	omap_serial_init();
