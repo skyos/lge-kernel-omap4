@@ -63,6 +63,13 @@ static void camera_flash(unsigned long timeout)
 static int lm3559_torch(unsigned char brightness)                                                                    
 {                                                                                                                    
 	unsigned char value;                                                                                          
+
+	if (brightness == 0) {
+		lm3559_enable(0);
+		mdelay(50);
+		lm3559_enable(1);
+		return 0;
+        }
                                                                                                                      
 	if (brightness > 0x1F)                                                                                        
 		brightness	=	0x1F;                                                                         
