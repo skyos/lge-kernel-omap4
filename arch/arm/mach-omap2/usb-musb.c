@@ -76,6 +76,7 @@ static struct musb_hdrc_config musb_config = {
 static char device_serial[MAX_USB_SERIAL_NUM];
 
 static char *usb_functions_ums[] = {
+	"acm",
 	"usb_mass_storage",
 };
 
@@ -84,6 +85,7 @@ static char *usb_functions_adb[] = {
 };
 
 static char *usb_functions_ums_adb[] = {
+	"acm",
 	"usb_mass_storage",
 	"adb",
 };
@@ -113,17 +115,17 @@ static char *usb_functions_acm_ums_adb[] = {
 };
 
 static char *usb_functions_all[] = {
-#ifdef CONFIG_USB_ANDROID_MASS_STORAGE
-	"usb_mass_storage",
-#endif
-#ifdef CONFIG_USB_ANDROID_ADB
-	"adb",
-#endif
 #ifdef CONFIG_USB_ANDROID_RNDIS
 	"rndis",
 #endif
 #ifdef CONFIG_USB_ANDROID_ACM
 	"acm",
+#endif
+#ifdef CONFIG_USB_ANDROID_MASS_STORAGE
+	"usb_mass_storage",
+#endif
+#ifdef CONFIG_USB_ANDROID_ADB
+	"adb",
 #endif
 };
 

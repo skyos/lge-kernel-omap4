@@ -198,7 +198,8 @@ static int product_matches_functions(struct android_usb_product *p)
 {
 	struct usb_function		*f;
 	list_for_each_entry(f, &android_config_driver.functions, list) {
-		if (product_has_function(p, f) == !!f->disabled)
+		if (product_has_function(p, f) == !!f->disabled 
+			&& strcmp(f->name,"gser") && strcmp(f->name,"nmea"))
 			return 0;
 	}
 	return 1;
@@ -334,6 +335,9 @@ void android_enable_function(struct usb_function *f, int enable)
 			 */
 			list_for_each_entry(func, &android_config_driver.functions, list) {
 				if (!strcmp(func->name, "usb_mass_storage")
+					|| !strcmp(func->name, "acm")
+					|| !strcmp(func->name, "gser")
+					|| !strcmp(func->name, "nmea")
 					|| !strcmp(func->name, "mtp")) {
 					usb_function_set_enabled(func, !enable);
 				}

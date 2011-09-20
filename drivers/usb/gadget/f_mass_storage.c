@@ -474,6 +474,12 @@ static inline int __fsg_is_set(struct fsg_common *common,
 #define fsg_is_set(common) likely(__fsg_is_set(common, __func__, __LINE__))
 
 
+char lunname[2][16]=
+{
+	"",
+	"Ext"
+};
+
 static inline struct fsg_dev *fsg_from_func(struct usb_function *f)
 {
 	return container_of(f, struct fsg_dev, function);
@@ -497,7 +503,8 @@ static void set_bulk_out_req_length(struct fsg_common *common,
 	rem = length % common->bulk_out_maxpacket;
 	if (rem > 0)
 		length += common->bulk_out_maxpacket - rem;
-	bh->outreq->length = length;
+	if (bh->outreq)
+		bh->outreq->length = length;
 }
 
 /*-------------------------------------------------------------------------*/
@@ -636,13 +643,12 @@ static int fsg_setup(struct usb_function *f,
 		if (ctrl->bRequestType !=
 		    (USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE))
 			break;
-		if (w_index != fsg->interface_number || w_value != 0)
+		if (/*w_index != fsg->interface_number ||*/ w_value != 0)
 			return -EDOM;
 
 		/* Raise an exception to stop the current operation
 		 * and reinitialize our state. */
 		DBG(fsg, "bulk reset request\n");
-		fsg->common->ep0req->length = 0;
 		raise_exception(fsg->common, FSG_STATE_RESET);
 		return DELAYED_STATUS;
 
@@ -650,8 +656,9 @@ static int fsg_setup(struct usb_function *f,
 		if (ctrl->bRequestType !=
 		    (USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE))
 			break;
-		if (w_index != fsg->interface_number || w_value != 0)
+		if (/*w_index != fsg->interface_number ||*/ w_value != 0)
 			return -EDOM;
+		
 		VDBG(fsg, "get max LUN\n");
 		*(u8 *) req->buf = fsg->common->nluns - 1;
 
@@ -1206,7 +1213,8 @@ static int do_inquiry(struct fsg_common *common, struct fsg_buffhd *bh)
 	buf[5] = 0;		/* No special options */
 	buf[6] = 0;
 	buf[7] = 0;
-	memcpy(buf + 8, common->inquiry_string, sizeof common->inquiry_string);
+	memcpy(buf + 8, curlun->inquiry_string, sizeof curlun->inquiry_string);
+//	memcpy(buf + 8, common->inquiry_string, sizeof common->inquiry_string);
 	return 36;
 }
 
@@ -1793,7 +1801,7 @@ static int send_status(struct fsg_common *common)
 		status = USB_STATUS_PHASE_ERROR;
 		sd = SS_INVALID_COMMAND;
 	} else if (sd != SS_NO_SENSE) {
-		DBG(common, "sending command-failure status\n");
+//		DBG(common, "sending command-failure status\n");
 		status = USB_STATUS_FAIL;
 		VDBG(common, "  sense data: SK x%02x, ASC x%02x, ASCQ x%02x;"
 				"  info x%x\n",
@@ -1879,9 +1887,9 @@ static int check_command(struct fsg_common *common, int cmnd_size,
 		 * be 6 as well.
 		 */
 		if (cmnd_size <= common->cmnd_size) {
-			DBG(common, "%s is buggy! Expected length %d "
-			    "but we got %d\n", name,
-			    cmnd_size, common->cmnd_size);
+//			DBG(common, "%s is buggy! Expected length %d "
+//			    "but we got %d\n", name,
+//			    cmnd_size, common->cmnd_size);
 			cmnd_size = common->cmnd_size;
 		} else {
 			common->phase_error = 1;
@@ -1889,10 +1897,12 @@ static int check_command(struct fsg_common *common, int cmnd_size,
 		}
 	}
 
+#if 0
 	/* Check that the LUN values are consistent */
 	if (common->lun != lun)
 		DBG(common, "using LUN %d from CBW, not LUN %d from CDB\n",
 		    common->lun, lun);
+#endif
 
 	/* Check the LUN */
 	if (common->lun >= 0 && common->lun < common->nluns) {
@@ -2483,11 +2493,14 @@ static void handle_exception(struct fsg_common *common)
 	if (likely(common->fsg)) {
 		for (i = 0; i < FSG_NUM_BUFFERS; ++i) {
 			bh = &common->buffhds[i];
-			if (bh->inreq_busy)
-				usb_ep_dequeue(common->fsg->bulk_in, bh->inreq);
-			if (bh->outreq_busy)
-				usb_ep_dequeue(common->fsg->bulk_out,
-					       bh->outreq);
+			if (bh->inreq_busy) {
+				int status = usb_ep_dequeue(common->fsg->bulk_in, bh->inreq);
+				WARN_ON(status != 0);
+			}
+			if (bh->outreq_busy) {
+				int status = usb_ep_dequeue(common->fsg->bulk_out, bh->outreq);
+				WARN_ON(status != 0);
+			}
 		}
 
 		/* Wait until everything is idle */
@@ -2614,6 +2627,8 @@ static int fsg_main_thread(void *common_)
 	 * pointers.  That way we can pass a kernel pointer to a routine
 	 * that expects a __user pointer and it will work okay. */
 	set_fs(get_ds());
+
+	printk("ums nlun:%d\n", common->nluns);
 
 	/* The main loop */
 	while (common->state != FSG_STATE_TERMINATED) {
@@ -2787,6 +2802,18 @@ static struct fsg_common *fsg_common_init(struct fsg_common *common,
 	init_rwsem(&common->filesem);
 
 	for (i = 0, lcfg = cfg->luns; i < nluns; ++i, ++curlun, ++lcfg) {
+#define OR(x, y) ((x) ? (x) : (y))		
+		snprintf(curlun->inquiry_string, sizeof curlun->inquiry_string,
+			 "%-8s%-5s%-11s%04x",// "%-8s%-16s%04x",
+			 OR(cfg->vendor_name, "Linux   "),
+			 /* Assume product name dependent on the first LUN */
+			 OR(cfg->product_name, common->luns->cdrom
+					     ? "File-Stor Gadget"
+					     : "File-CD Gadget  "),
+			lunname[i], 
+					
+			 					     
+			 i);
 		curlun->cdrom = !!lcfg->cdrom;
 		curlun->ro = lcfg->cdrom || lcfg->ro;
 		curlun->removable = lcfg->removable;
@@ -2866,6 +2893,7 @@ buffhds_first_it:
 			i = 0x0399;
 		}
 	}
+#if 0
 #define OR(x, y) ((x) ? (x) : (y))
 	snprintf(common->inquiry_string, sizeof common->inquiry_string,
 		 "%-8s%-16s%04x",
@@ -2875,6 +2903,7 @@ buffhds_first_it:
 				     ? "File-Stor Gadget"
 				     : "File-CD Gadget  "),
 		 i);
+#endif 
 
 	/* Some peripheral controllers are known not to be able to
 	 * halt bulk endpoints correctly.  If one of them is present,
@@ -3108,8 +3137,8 @@ static int fsg_bind_config(struct usb_composite_dev *cdev,
 	rc = usb_add_function(c, &fsg->function);
 	if (unlikely(rc))
 		kfree(fsg);
-	else
-		fsg_common_get(fsg->common);
+	/* else */
+	/* 	fsg_common_get(fsg->common); */
 	return rc;
 }
 
