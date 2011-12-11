@@ -108,7 +108,6 @@ void abe_dbg_log(u32 x, u32 y, u32 z, u32 t)
 	if (abe->dbg_activity_log_write_pointer >= D_DEBUG_HAL_TASK_sizeof)
 		abe->dbg_activity_log_write_pointer = 0;
 }
-
 /**
  * abe_debug_output_pins
  * @x: d
@@ -118,7 +117,6 @@ void abe_dbg_log(u32 x, u32 y, u32 z, u32 t)
 void abe_debug_output_pins(u32 x)
 {
 }
-
 /**
  * abe_dbg_error_log -  Log ABE error
  * @x: error to log
@@ -129,7 +127,6 @@ void abe_dbg_error_log(u32 x)
 {
 	abe_dbg_log(x, MAX_UINT8, MAX_UINT8, MAX_UINT8);
 }
-
 /**
  * abe_debugger
  * @x: error to log
@@ -139,7 +136,6 @@ void abe_dbg_error_log(u32 x)
 void abe_debugger(u32 x)
 {
 }
-
 /**
  * abe_load_embeddded_patterns
  *

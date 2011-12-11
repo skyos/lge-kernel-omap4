@@ -18,9 +18,6 @@ config SND_OMAP_SOC_ABE
 config SND_OMAP_SOC_DMIC
 	tristate
 
-config SND_OMAP_SOC_VXREC
-	tristate
-
 config SND_OMAP_SOC_N810
 	tristate "SoC Audio support for Nokia N810"
 	depends on SND_OMAP_SOC && MACH_NOKIA_N810 && I2C
@@ -121,7 +118,6 @@ config SND_OMAP_SOC_SDP4430
 	select SND_SOC_DMIC
 	select SND_OMAP_SOC_DMIC
 	select SND_OMAP_SOC_ABE_DSP
-	select SND_OMAP_SOC_VXREC
 	help
 	  Say Y if you want to add support for SoC audio on Texas Instruments
 	  SDP4430 or PandaBoard.
@@ -137,7 +133,6 @@ config SND_OMAP_SOC_COSMOPOLITAN
 	select SND_SOC_DMIC
 	select SND_OMAP_SOC_DMIC
 	select SND_OMAP_SOC_ABE_DSP
-	select SND_OMAP_SOC_VXREC
 	help
 	  Say Y if you want to add support for SoC audio on LGE Cosmopolitan.
 

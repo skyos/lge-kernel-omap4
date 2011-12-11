@@ -14,7 +14,7 @@
  *
  * This program is distributed in the hope that it will be useful, but
  * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -73,7 +73,6 @@ void abe_block_copy(u32 direction, u32 memory_bank, u32 address,
 {
 	u32 i;
 	u32 base_address = 0, *src_ptr, *dst_ptr, n;
-
 	switch (memory_bank) {
 	case ABE_PMEM:
 		base_address = (u32) abe->io_base + ABE_PMEM_BASE_OFFSET_MPU;
@@ -107,7 +106,6 @@ void abe_block_copy(u32 direction, u32 memory_bank, u32 address,
 	for (i = 0; i < n; i++)
 		*dst_ptr++ = *src_ptr++;
 }
-
 /**
  * abe_reset_mem
  *
@@ -122,7 +120,6 @@ void abe_reset_mem(u32 memory_bank, u32 address, u32 nb_bytes)
 	u32 i;
 	u32 *dst_ptr, n;
 	u32 base_address = 0;
-
 	switch (memory_bank) {
 	case ABE_SMEM:
 		base_address = (u32) abe->io_base + ABE_SMEM_BASE_OFFSET_MPU;

@@ -66,7 +66,6 @@
  *      - Error monitoring
  *      - Activity Tracing
  */
-
 /**
  * abe_irq_ping_pong
  *
@@ -83,7 +82,6 @@ void abe_irq_ping_pong(void)
 	abe_call_subroutine(abe_irq_pingpong_player_id, NOPARAMETER,
 			    NOPARAMETER, NOPARAMETER, NOPARAMETER);
 }
-
 /**
  * abe_irq_check_for_sequences
 * @i: sequence ID
@@ -94,7 +92,6 @@ void abe_irq_ping_pong(void)
 void abe_irq_check_for_sequences(u32 i)
 {
 }
-
 /**
  * abe_irq_aps
  *

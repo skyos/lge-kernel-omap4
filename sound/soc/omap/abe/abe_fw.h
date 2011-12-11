@@ -14,7 +14,7 @@
  *
  * This program is distributed in the hope that it will be useful, but
  * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -70,7 +70,7 @@
 #define FW_SCHED_LOOP_FREQ_DIV1000	(FW_SCHED_LOOP_FREQ/1000)
 #define EVENT_FREQUENCY 96000
 #define SLOTS_IN_SCHED_LOOP (96000/FW_SCHED_LOOP_FREQ)
-#define SCHED_LOOP_8kHz (8000/FW_SCHED_LOOP_FREQ)
+#define SCHED_LOOP_8kHz ( 8000/FW_SCHED_LOOP_FREQ)
 #define SCHED_LOOP_16kHz (16000/FW_SCHED_LOOP_FREQ)
 #define SCHED_LOOP_24kHz (24000/FW_SCHED_LOOP_FREQ)
 #define SCHED_LOOP_48kHz (48000/FW_SCHED_LOOP_FREQ)
@@ -78,7 +78,7 @@
 /*
  * DMEM AREA - SCHEDULER
  */
-#define dmem_mm_trace	D_DEBUG_FIFO_ADDR
+#define dmem_mm_trace D_DEBUG_FIFO_ADDR
 #define dmem_mm_trace_size ((D_DEBUG_FIFO_ADDR_END-D_DEBUG_FIFO_ADDR+1)/4)
 #define ATC_SIZE 8		/* 8 bytes per descriptors */
 typedef struct {
@@ -102,8 +102,8 @@ typedef struct {
  * table of scheduler tasks :
  * char scheduler_table[24 x 4] : four bytes used at OPP100%
  */
-#define dmem_scheduler_table	D_multiFrame_ADDR
-#define dmem_eanc_task_pointer	D_pFastLoopBack_ADDR
+#define dmem_scheduler_table	 D_multiFrame_ADDR
+#define dmem_eanc_task_pointer 	D_pFastLoopBack_ADDR
 /*
  * OPP value :
  * pointer increment steps in the scheduler table
@@ -198,8 +198,8 @@ typedef struct {
  * uint32 FIFO_CONTENT [6];
  * } dmem_commands_to_phoenix; 32 bytes
  */
-#define dmem_commands_to_phoenix		D_Cmd2PhenixFifo_ADDR
-#define dmem_commands_to_phoenix_descriptor	D_Cmd2PhenixFifoDesc_ADDR
+#define dmem_commands_to_phoenix 	D_Cmd2PhenixFifo_ADDR
+#define dmem_commands_to_phoenix_descriptor 	D_Cmd2PhenixFifoDesc_ADDR
 /*
  * analog control circular buffer commands from Phoenix (status line)
  * structure {
@@ -208,8 +208,8 @@ typedef struct {
  * uint32 FIFO_CONTENT [6];
  * } dmem_commands_to_phoenix; 32 bytes
  */
-#define dmem_commands_from_phoenix		D_StatusFromPhenixFifo_ADDR
-#define dmem_commands_from_phoenix_descriptor	D_StatusFromPhenixFifoDesc_ADDR
+#define dmem_commands_from_phoenix	D_StatusFromPhenixFifo_ADDR
+#define dmem_commands_from_phoenix_descriptor 	D_StatusFromPhenixFifoDesc_ADDR
 /*
  * DEBUG mask
  * uint16 dmem_debug_trace_mask
@@ -415,4 +415,4 @@ typedef struct {
  * int24 cmem_dither(x) [4]
  */
 #define cmem_dither
-#endif/* _ABE_FW_H_ */
+#endif /* _ABE_FW_H_ */

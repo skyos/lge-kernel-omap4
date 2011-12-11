@@ -14,7 +14,7 @@
  *
  * This program is distributed in the hope that it will be useful, but
  * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -67,8 +67,6 @@
 /*
  * HAL INTERNAL AP
  */
-void abe_src_filters_saturation_monitoring(void);
-void abe_reset_filter(u32 address, u32 size);
 void abe_decide_main_port(void);
 void abe_gain_offset(u32 id, u32 *mixer_offset);
 void abe_int_2_float16(u32 data, u32 *mantissa, u32 *exp);
@@ -88,7 +86,7 @@ void abe_enable_atc(u32 id);
 void abe_disable_atc(u32 id);
 void abe_init_atc(u32 id);
 void abe_init_io_tasks(u32 id, abe_data_format_t *format,
-			abe_port_protocol_t *prot);
+		       abe_port_protocol_t *prot);
 void abe_enable_pp_io_task(u32 id);
 void abe_disable_pp_io_task(u32 id);
 void abe_init_dma_t(u32 id, abe_port_protocol_t *prot);

@@ -57,7 +57,6 @@
  */
 #include "abe_main.h"
 #define ENABLE_DEFAULT_PLAYERS 0
-
 /**
  * abe_default_irq_pingpong_player
  *
@@ -71,7 +70,7 @@ void abe_default_irq_pingpong_player(void)
 	static s32 idx;
 	u32 i, dst, n_samples, n_bytes;
 	s32 temp[N_SAMPLES_MAX], audio_sample;
-#define DATA_SIZE 20	/* t = [0:N-1]/N; x = round(16383*sin(2*pi*t)) */
+#define DATA_SIZE 20		/* t = [0:N-1]/N; x = round(16383*sin(2*pi*t)) */
 	const s32 audio_pattern[DATA_SIZE] = {
 		0, 5063, 9630, 13254, 15581, 16383, 15581, 13254, 9630,
 		5063, 0, -5063, -9630, -13254, -15581, -16383, -15581,
@@ -111,13 +110,12 @@ void abe_default_irq_pingpong_player(void)
 	abe_set_ping_pong_buffer(MM_DL_PORT, n_bytes);
 #endif
 }
-
 /**
  * abe_default_irq_pingpong_player_32bits
  *
  * generates data for the cache-flush buffer  MODE 32 BITS
  * Return value:
- *	none
+ * None.
  */
 void abe_default_irq_pingpong_player_32bits(void)
 {
@@ -126,7 +124,7 @@ void abe_default_irq_pingpong_player_32bits(void)
 	static s32 idx;
 	u32 i, dst, n_samples, n_bytes;
 	s32 temp[N_SAMPLES_MAX], audio_sample;
-#define DATA_SIZE 20	/*  t = [0:N-1]/N; x = round(16383*sin(2*pi*t)) */
+#define DATA_SIZE 20		/*  t = [0:N-1]/N; x = round(16383*sin(2*pi*t)) */
 	const s32 audio_pattern[DATA_SIZE] = {
 		0, 5063, 9630, 13254, 15581, 16383, 15581, 13254,
 		9630, 5063, 0, -5063, -9630, -13254, -15581, -16383,
@@ -154,13 +152,12 @@ void abe_default_irq_pingpong_player_32bits(void)
 	abe_set_ping_pong_buffer(MM_DL_PORT, n_bytes);
 #endif
 }
-
 /**
  * abe_rshifted16_irq_pingpong_player_32bits
  *
  * generates data for the cache-flush buffer  MODE 32 BITS
  * Return value:
- *	none
+ * None.
  */
 void abe_rshifted16_irq_pingpong_player_32bits(void)
 {
@@ -169,7 +166,7 @@ void abe_rshifted16_irq_pingpong_player_32bits(void)
 	static s32 idx;
 	u32 i, dst, n_samples, n_bytes;
 	s32 temp[N_SAMPLES_MAX], audio_sample;
-#define DATA_SIZE 20	/*  t = [0:N-1]/N; x = round(16383*sin(2*pi*t)) */
+#define DATA_SIZE 20		/*  t = [0:N-1]/N; x = round(16383*sin(2*pi*t)) */
 	const s32 audio_pattern[DATA_SIZE] = {
 		0, 5063, 9630, 13254, 15581, 16383, 15581, 13254,
 		9630, 5063, 0, -5063, -9630, -13254, -15581, -16383,
@@ -197,13 +194,12 @@ void abe_rshifted16_irq_pingpong_player_32bits(void)
 	abe_set_ping_pong_buffer(MM_DL_PORT, n_bytes);
 #endif
 }
-
 /**
  * abe_1616_irq_pingpong_player_1616bits
  *
  * generates data for the cache-flush buffer  MODE 16+16 BITS
  * Return value:
- *	none
+ * None.
  */
 void abe_1616_irq_pingpong_player_1616bits(void)
 {
@@ -212,7 +208,7 @@ void abe_1616_irq_pingpong_player_1616bits(void)
 	static s32 idx;
 	u32 i, dst, n_samples, n_bytes;
 	s32 temp[N_SAMPLES_MAX], audio_sample;
-#define DATA_SIZE 20	/*  t = [0:N-1]/N; x = round(16383*sin(2*pi*t)) */
+#define DATA_SIZE 20		/*  t = [0:N-1]/N; x = round(16383*sin(2*pi*t)) */
 	const s32 audio_pattern[DATA_SIZE] = {
 		0, 5063, 9630, 13254, 15581, 16383, 15581, 13254,
 		9630, 5063, 0, -5063, -9630, -13254, -15581, -16383,
@@ -239,7 +235,6 @@ void abe_1616_irq_pingpong_player_1616bits(void)
 	abe_set_ping_pong_buffer(MM_DL_PORT, n_bytes);
 #endif
 }
-
 /**
  * abe_default_irq_aps_adaptation
  *
@@ -248,7 +243,6 @@ void abe_1616_irq_pingpong_player_1616bits(void)
 void abe_default_irq_aps_adaptation(void)
 {
 }
-
 /**
  * abe_read_sys_clock
  * @time: pointer to the system clock
@@ -261,7 +255,6 @@ void abe_read_sys_clock(u32 *time)
 	*time = clock;
 	clock++;
 }
-
 /**
  * abe_aps_tuning
  *

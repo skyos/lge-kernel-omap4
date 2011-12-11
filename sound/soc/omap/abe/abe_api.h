@@ -58,8 +58,11 @@
 #ifndef _ABE_API_H_
 #define _ABE_API_H_
 
-#include <linux/string.h>
-#include <linux/mutex.h>
+#include <linux/module.h>
+#include <linux/moduleparam.h>
+#include <linux/init.h>
+#include <linux/err.h>
+#include <linux/slab.h>
 
 struct omap_abe {
 	void __iomem *io_base;
@@ -72,6 +75,10 @@ struct omap_abe {
 	u32 desired_gains_linear[MAX_NBGAIN_CMEM];
 	u32 desired_ramp_delay_ms[MAX_NBGAIN_CMEM];
 	struct mutex mutex;
+
+	u32 pdm_dl1_status;
+	u32 pdm_dl2_status;
+	u32 pdm_vib_status;
 
 	/* Debug Data */
 	u32 irq_dbg_read_ptr;
@@ -637,18 +644,6 @@ int abe_remote_debugger_interface(u32 n, u8 *p);
  */
 int abe_enable_test_pattern(u32 smem_id, u32 on_off);
 
-
-/**
- * abe_write_pdmdl_offset - write the desired offset on the DL1/DL2 paths
- *
- * Parameters:
- *   path: 1 for the DL1 ABE path, 2 for the DL2 ABE path
- *   offset_left: integer value that will be added on all PDM left samples
- *   offset_right: integer value that will be added on all PDM right samples
- *
- */
-void abe_write_pdmdl_offset(u32 path, u32 offset_left, u32 offset_right);
-
 /**
  * abe_init_mem - Allocate Kernel space memory map for ABE
  *
@@ -667,47 +662,8 @@ void abe_add_subroutine(u32 *id, abe_subroutine2 f, u32 nparam, u32 *params);
  */
 int abe_read_next_ping_pong_buffer(u32 port, u32 *p, u32 *n);
 
-/**
- * abe_reset_vx_ul_src_filters - reset VX-UL port SRC filters
- *
- * it is assumed that filters are located in SMEM
- */
-void abe_reset_vx_ul_src_filters(void);
-
-/**
- * abe_reset_mic_ul_src_filters - reset AMIC or DMICs or BT UL SRC filters
- *
- * it is assumed that filters are located in SMEM
- */
-void abe_reset_mic_ul_src_filters(void);
-
-/**
- * abe_reset_vx_dl_src_filters - reset VX-DL port SRC filters
- *
- * it is assumed that filters are located in SMEM
- */
-void abe_reset_vx_dl_src_filters(void);
-
-/**
- * abe_reset_dl1_src_filters - reset DL1 path filters
- *
- * it is assumed that filters are located in SMEM
- */
-void abe_reset_dl1_src_filters(void);
-
-/**
- * abe_reset_dl2_src_filters - reset DL2 path filters
- *
- * it is assumed that filters are located in SMEM
- */
-void abe_reset_dl2_src_filters(void);
-
-/**
- * abe_reset_bt_dl_src_filters - reset bluetooth DL SRC path filters
- *
- * it is assumed that filters are located in SMEM
- */
-void abe_reset_bt_dl_src_filters(void);
-
 extern u32 abe_irq_pingpong_player_id;
+
+u32 abe_check_port(unsigned int port);
+
 #endif/* _ABE_API_H_ */

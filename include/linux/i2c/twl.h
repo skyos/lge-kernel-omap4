@@ -127,7 +127,13 @@
 #define REG_INT_MSK_STS_C		0x08
 
 /* MASK INT REG GROUP A */
+//kibum.lee
+//#define TWL6030_PWR_INT_MASK 		0x07
+
+//kibum.lee
 #define TWL6030_PWR_INT_MASK 		0x03
+#define TWL6030_VBAT_LOW_MASK 		0x04
+
 #define TWL6030_RTC_INT_MASK 		0x18
 #define TWL6030_HOTDIE_INT_MASK 	0x20
 #define TWL6030_SMPSLDOA_INT_MASK	0xC0
@@ -615,29 +621,23 @@ struct twl4030_codec_audio_data {
 	void (*set_hs_extmute)(int mute);
 
 	/* twl6040 */
-	int vddhf_uV;
+	int audpwron_gpio;	/* audio power-on gpio */
+	int naudint_irq;	/* audio interrupt */
+#if defined(CONFIG_MACH_LGE_COSMO_REV_A)
+	unsigned int hsjack_gpio;
+	unsigned int hsjack_irq;
+#endif
 };
 
 struct twl4030_codec_vibra_data {
 	unsigned int	audio_mclk;
 	unsigned int	coexist;
-
-	/* timed-output based implementations */
-	int max_timeout;
-	int initial_vibrate;
-	int (*init)(void);
-	void (*exit)(void);
 };
 
 struct twl4030_codec_data {
 	unsigned int	audio_mclk;
 	struct twl4030_codec_audio_data		*audio;
 	struct twl4030_codec_vibra_data		*vibra;
-
-	/* twl6040 */
-	int audpwron_gpio;		/* audio power-on gpio */
-	unsigned int naudint_irq;	/* audio interrupt */
-	unsigned int irq_base;
 };
 
 struct twl4030_platform_data {
@@ -765,6 +765,185 @@ static inline int twl4030charger_usb_en(int enable) { return 0; }
 
 /* INTERNAL LDOs */
 #define TWL6030_REG_VRTC	47
-#define TWL6030_REG_CLK32KG	48
 
 #endif /* End of __TWL4030_H */
+
+
+
+#define CONTROLLER_INT_MASK	0x00
+#define CONTROLLER_CTRL1	0x01
+#define CONTROLLER_WDG		0x02
+#define CONTROLLER_STAT1	0x03
+#define CHARGERUSB_INT_STATUS	0x04
+#define CHARGERUSB_INT_MASK	0x05
+#define CHARGERUSB_STATUS_INT1	0x06
+#define CHARGERUSB_STATUS_INT2	0x07
+#define CHARGERUSB_CTRL1	0x08
+#define CHARGERUSB_CTRL2	0x09
+#define CHARGERUSB_CTRL3	0x0A
+#define CHARGERUSB_STAT1	0x0B
+#define CHARGERUSB_VOREG	0x0C
+#define CHARGERUSB_VICHRG	0x0D
+#define CHARGERUSB_CINLIMIT	0x0E
+#define CHARGERUSB_CTRLLIMIT1	0x0F
+#define CHARGERUSB_CTRLLIMIT2	0x10
+#define ANTICOLLAPSE_CTRL1	0x11
+#define ANTICOLLAPSE_CTRL2	0x12
+
+#define FG_REG_00	0x00
+#define FG_REG_01	0x01
+#define FG_REG_02	0x02
+#define FG_REG_03	0x03
+#define FG_REG_04	0x04
+#define FG_REG_05	0x05
+#define FG_REG_06	0x06
+#define FG_REG_07	0x07
+#define FG_REG_08	0x08
+#define FG_REG_09	0x09
+#define FG_REG_10	0x0A
+#define FG_REG_11	0x0B
+
+/* CONTROLLER_INT_MASK */
+#define MVAC_FAULT		(1 << 7)
+#define MAC_EOC			(1 << 6)
+#define MBAT_REMOVED		(1 << 4)
+#define MFAULT_WDG		(1 << 3)
+#define MBAT_TEMP		(1 << 2)
+#define MVBUS_DET		(1 << 1)
+#define MVAC_DET		(1 << 0)
+
+/* CONTROLLER_CTRL1 */
+#define CONTROLLER_CTRL1_EN_CHARGER	(1 << 4)
+#define CONTROLLER_CTRL1_SEL_CHARGER	(1 << 3)
+
+/* CONTROLLER_STAT1 */
+#define CONTROLLER_STAT1_EXTCHRG_STATZ	(1 << 7)
+#define CONTROLLER_STAT1_CHRG_DET_N	(1 << 5)
+#define CONTROLLER_STAT1_FAULT_WDG	(1 << 4)
+#define CONTROLLER_STAT1_VAC_DET	(1 << 3)
+#define VAC_DET	(1 << 3)
+#define CONTROLLER_STAT1_VBUS_DET	(1 << 2)
+#define VBUS_DET	(1 << 2)
+#define CONTROLLER_STAT1_BAT_REMOVED	(1 << 1)
+#define CONTROLLER_STAT1_BAT_TEMP_OVRANGE (1 << 0)
+
+/* CHARGERUSB_INT_STATUS */
+#define CURRENT_TERM_INT	(1 << 3)
+#define CHARGERUSB_STAT		(1 << 2)
+#define CHARGERUSB_THMREG	(1 << 1)
+#define CHARGERUSB_FAULT	(1 << 0)
+
+/* CHARGERUSB_INT_MASK */
+#define MASK_MCURRENT_TERM		(1 << 3)
+#define MASK_MCHARGERUSB_STAT		(1 << 2)
+#define MASK_MCHARGERUSB_THMREG		(1 << 1)
+#define MASK_MCHARGERUSB_FAULT		(1 << 0)
+
+/* CHARGERUSB_STATUS_INT1 */
+#define CHARGERUSB_STATUS_INT1_TMREG	(1 << 7)
+#define CHARGERUSB_STATUS_INT1_NO_BAT	(1 << 6)
+#define CHARGERUSB_STATUS_INT1_BST_OCP	(1 << 5)
+#define CHARGERUSB_STATUS_INT1_TH_SHUTD	(1 << 4)
+#define CHARGERUSB_STATUS_INT1_BAT_OVP	(1 << 3)
+#define CHARGERUSB_STATUS_INT1_POOR_SRC	(1 << 2)
+#define CHARGERUSB_STATUS_INT1_SLP_MODE	(1 << 1)
+#define CHARGERUSB_STATUS_INT1_VBUS_OVP	(1 << 0)
+
+/* CHARGERUSB_STATUS_INT2 */
+#define ICCLOOP		(1 << 3)
+#define CURRENT_TERM	(1 << 2)
+#define CHARGE_DONE	(1 << 1)
+#define ANTICOLLAPSE	(1 << 0)
+
+/* CHARGERUSB_CTRL1 */
+#define SUSPEND_BOOT	(1 << 7)
+#define OPA_MODE	(1 << 6)
+#define HZ_MODE		(1 << 5)
+#define TERM		(1 << 4)
+
+/* CHARGERUSB_CTRL2 */
+#define CHARGERUSB_CTRL2_VITERM_50	(0 << 5)
+#define CHARGERUSB_CTRL2_VITERM_100	(1 << 5)
+#define CHARGERUSB_CTRL2_VITERM_150	(2 << 5)
+#define CHARGERUSB_CTRL2_VITERM_400	(7 << 5)
+
+/* CHARGERUSB_CTRL3 */
+#define VBUSCHRG_LDO_OVRD	(1 << 7)
+#define CHARGE_ONCE		(1 << 6)
+#define BST_HW_PR_DIS		(1 << 5)
+#define AUTOSUPPLY		(1 << 3)
+#define BUCK_HSILIM		(1 << 0)
+
+/* CHARGERUSB_VOREG */
+#define CHARGERUSB_VOREG_3P52		0x01
+#define CHARGERUSB_VOREG_4P0		0x19
+#define CHARGERUSB_VOREG_4P2		0x23
+#define CHARGERUSB_VOREG_4P76		0x3F
+
+/* CHARGERUSB_VICHRG */
+#define CHARGERUSB_VICHRG_300		0x0
+#define CHARGERUSB_VICHRG_500		0x4
+#define CHARGERUSB_VICHRG_1500		0xE
+
+/* CHARGERUSB_CINLIMIT */
+#define CHARGERUSB_CIN_LIMIT_100	0x1
+#define CHARGERUSB_CIN_LIMIT_300	0x5
+#define CHARGERUSB_CIN_LIMIT_500	0x9
+#define CHARGERUSB_CIN_LIMIT_NONE	0xF
+
+/* CHARGERUSB_CTRLLIMIT1 */
+#define VOREGL_4P16			0x21
+#define VOREGL_4P56			0x35
+
+/* CHARGERUSB_CTRLLIMIT2 */
+#define CHARGERUSB_CTRLLIMIT2_1500	0x0E
+#define		LOCK_LIMIT		(1 << 4)
+
+/* ANTICOLLAPSE_CTRL2 */
+#define BUCK_VTH_SHIFT			5
+
+/* FG_REG_00 */
+#define CC_ACTIVE_MODE_SHIFT	6
+#define CC_AUTOCLEAR		(1 << 2)
+#define CC_CAL_EN		(1 << 1)
+#define CC_PAUSE		(1 << 0)
+
+#define REG_TOGGLE1		0x90
+#define FGDITHS			(1 << 7)
+#define FGDITHR			(1 << 6)
+#define FGS			(1 << 5)
+#define FGR			(1 << 4)
+
+#define PWDNSTATUS2		0x94
+
+/* TWL6030_GPADC_CTRL */
+#define GPADC_CTRL_TEMP1_EN	(1 << 0)    /* input ch 1 */
+#define GPADC_CTRL_TEMP2_EN	(1 << 1)    /* input ch 4 */
+#define GPADC_CTRL_SCALER_EN	(1 << 2)    /* input ch 2 */
+#define GPADC_CTRL_SCALER_DIV4	(1 << 3)
+#define GPADC_CTRL_SCALER_EN_CH11	(1 << 4)    /* input ch 11 */
+#define GPADC_CTRL_TEMP1_EN_MONITOR	(1 << 5)
+#define GPADC_CTRL_TEMP2_EN_MONITOR	(1 << 6)
+#define GPADC_CTRL_ISOURCE_EN		(1 << 7)
+#define ENABLE_ISOURCE		0x80
+
+#define REG_MISC1		0xE4
+#define VAC_MEAS		0x04
+#define VBAT_MEAS		0x02
+#define BB_MEAS			0x01
+
+#define REG_USB_VBUS_CTRL_SET	0x04
+#define VBUS_MEAS		0x01
+#define REG_USB_ID_CTRL_SET	0x06
+#define ID_MEAS			0x01
+
+/* TWL6030_BBSPOR_CFG*/
+#define BBSPOR_CFG             0xE6
+#define VRTC_EN_SLP_STS         (1 << 6)
+#define VRTC_EN_OFF_STS         (1 << 5) 
+#define VRTC_PWEN               (1 << 4)
+#define BB_CHG_EN               (1 << 3)
+#define BB_SEL_2V4              (0 << 1)
+#define BB_SEL_2V5              (1 << 1)
+#define BB_SEL_2V6              (2 << 1)
+#define BB_SEL_VBAT             (3 << 1)

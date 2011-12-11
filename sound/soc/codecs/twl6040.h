@@ -22,11 +22,6 @@
 #ifndef __TWL6040_H__
 #define __TWL6040_H__
 
-#define TWL6040_UL_DAI		0
-#define TWL6040_DL1_DAI		1
-#define TWL6040_DL2_DAI		2
-#define TWL6040_VIB_DAI		3
-
 struct twl6040_setup_data {
 	void (*codec_enable)(int enable);
 	void *jack;
@@ -35,4 +30,10 @@ struct twl6040_setup_data {
 void twl6040_hs_jack_detect(struct snd_soc_codec *codec,
 			    struct snd_soc_jack *jack, int report);
 
+#define HEADSET_NONE	0
+#define WIRED_HEADSET	1//with MIC
+#define WIRED_HEADPHONE	2//without MIC
+int is_without_mic(void);
+void hs_set_bias(struct snd_soc_codec *codec, int on);
+void set_hook_enable(struct snd_soc_codec *codec, int on);
 #endif /* End of __TWL6040_H__ */

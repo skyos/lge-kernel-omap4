@@ -59,6 +59,10 @@
 #include "abe_ref.h"
 #include "abe_dm_addr.h"
 
+#include "abe_dbg.h"
+#include <linux/kernel.h>
+#include <linux/delay.h>
+
 /*
  * initialize the default values for call-backs to subroutines
  * - FIFO IRQ call-backs for sequenced tasks
@@ -120,11 +124,11 @@ void abe_build_scheduler_table()
 	abe->MultiFrame[5][2] = 0;
 	abe->MultiFrame[5][7] = ABE_TASK_ID(C_ABE_FW_TASK_VIBRA_SPLIT);
 	abe->MultiFrame[6][0] = ABE_TASK_ID(C_ABE_FW_TASK_EARP_48_96_LP);
-	abe->MultiFrame[6][4] = ABE_TASK_ID(C_ABE_FW_TASK_EchoMixer);
-	abe->MultiFrame[6][5] = ABE_TASK_ID(C_ABE_FW_TASK_BT_UL_SPLIT);
+	abe->MultiFrame[6][5] = ABE_TASK_ID(C_ABE_FW_TASK_EchoMixer);
 #define TASK_IO_PDM_DL_HALF1_SLT 7
 #define TASK_IO_PDM_DL_HALF1_IDX 0
 	abe->MultiFrame[7][0] = 0;
+	abe->MultiFrame[7][2] = ABE_TASK_ID(C_ABE_FW_TASK_BT_UL_SPLIT);
 	abe->MultiFrame[7][3] = ABE_TASK_ID(C_ABE_FW_TASK_DBG_SYNC);
 	abe->MultiFrame[7][5] = ABE_TASK_ID(C_ABE_FW_TASK_ECHO_REF_SPLIT);
 	abe->MultiFrame[8][2] = ABE_TASK_ID(C_ABE_FW_TASK_DMIC1_96_48_LP);
@@ -185,7 +189,7 @@ void abe_build_scheduler_table()
 #define TASK_IO_PDM_DL_HALF2_SLT 19
 #define TASK_IO_PDM_DL_HALF2_IDX 0
 	abe->MultiFrame[19][0] = 0;
-	/* MM_UL is moved to OPP 100% */
+	/*         MM_UL is moved to OPP 100% */
 #define TASK_IO_MM_UL_SLT 19
 #define TASK_IO_MM_UL_IDX 6
 	abe->MultiFrame[19][6] = 0;
@@ -451,9 +455,8 @@ void abe_disable_enable_dma_request(u32 id, u32 on_off)
 			sio_desc_address, (u32 *) &sio_desc,
 			sizeof(sio_desc));
 		if (on_off) {
-			if (abe_port[id].protocol.protocol_switch !=
-				SERIAL_PORT_PROT)
-				sio_desc.atc_irq_data =
+			if (abe_port[id].protocol.protocol_switch != SERIAL_PORT_PROT)
+			sio_desc.atc_irq_data =
 				(u8) abe_port[id].protocol.p.prot_dmareq.
 				dma_data;
 			sio_desc.on_off = 0x80;
@@ -696,8 +699,7 @@ void abe_init_io_tasks(u32 id, abe_data_format_t *format,
 					ABE_TASK_ID(C_ABE_FW_TASK_IO_MM_UL);
 		}
 		if (MM_UL2_PORT == id) {
-			abe->MultiFrame[TASK_IO_MM_UL2_SLT]
-					[TASK_IO_MM_UL2_IDX] =
+			abe->MultiFrame[TASK_IO_MM_UL2_SLT][TASK_IO_MM_UL2_IDX] =
 					ABE_TASK_ID(C_ABE_FW_TASK_IO_MM_UL2);
 		}
 		/* check for 8kHz/16kHz */
@@ -713,18 +715,17 @@ void abe_init_io_tasks(u32 id, abe_data_format_t *format,
 						OMAP_ABE_PORT_ACTIVITY_IDLE) &&
 						(abe_port[VX_UL_PORT].status ==
 						OMAP_ABE_PORT_ACTIVITY_IDLE)) {
-					/*
-					 * The 1st opened port is VX_DL_PORT
-					 * both VX_UL ASRC and VX_DL ASRC will
-					 * add/remove sample referring
-					 * to VX_DL flow_counter
-					 */
-					abe->MultiFrame[TASK_ASRC_VX_DL_SLT]
-						[TASK_ASRC_VX_DL_IDX] =
-						ABE_TASK_ID(C_ABE_FW_TASK_ASRC_VX_DL_8);
-					abe->MultiFrame[TASK_ASRC_VX_UL_SLT]
-						[TASK_ASRC_VX_UL_IDX] =
-						ABE_TASK_ID(C_ABE_FW_TASK_ASRC_VX_UL_8_SIB);
+					/* the 1st opened port is VX_DL_PORT */
+					/* both VX_UL ASRC and VX_DL ASRC will add/remove sample
+						referring to VX_DL flow_counter */
+						abe->MultiFrame[TASK_ASRC_VX_DL_SLT]
+							[TASK_ASRC_VX_DL_IDX] =
+							ABE_TASK_ID(C_ABE_FW_TASK_ASRC_VX_DL_8);
+						abe->MultiFrame[TASK_ASRC_VX_UL_SLT]
+							[TASK_ASRC_VX_UL_IDX] =
+							ABE_TASK_ID(C_ABE_FW_TASK_ASRC_VX_UL_8_SIB);
+				} else {
+					/* Do nothing, Scheduling Table has already been patched */
 				}
 			} else {
 				abe->MultiFrame[TASK_VX_DL_SLT][TASK_VX_DL_IDX] =
@@ -735,18 +736,17 @@ void abe_init_io_tasks(u32 id, abe_data_format_t *format,
 						OMAP_ABE_PORT_ACTIVITY_IDLE) &&
 						(abe_port[VX_UL_PORT].status ==
 						OMAP_ABE_PORT_ACTIVITY_IDLE)) {
-					/*
-					 * The 1st opened port is VX_DL_PORT
-					 * both VX_UL ASRC and VX_DL ASRC will
-					 * add/remove sample referring to
-					 * VX_DL flow_counter
-					 */
-					abe->MultiFrame[TASK_ASRC_VX_DL_SLT]
-						[TASK_ASRC_VX_DL_IDX] =
-						ABE_TASK_ID(C_ABE_FW_TASK_ASRC_VX_DL_16);
-					abe->MultiFrame[TASK_ASRC_VX_UL_SLT]
-						[TASK_ASRC_VX_UL_IDX] =
-						ABE_TASK_ID(C_ABE_FW_TASK_ASRC_VX_UL_16_SIB);
+					/* the 1st opened port is VX_DL_PORT */
+					/* both VX_UL ASRC and VX_DL ASRC will add/remove sample
+						referring to VX_DL flow_counter */
+						abe->MultiFrame[TASK_ASRC_VX_DL_SLT]
+							[TASK_ASRC_VX_DL_IDX] =
+							ABE_TASK_ID(C_ABE_FW_TASK_ASRC_VX_DL_16);
+						abe->MultiFrame[TASK_ASRC_VX_UL_SLT]
+							[TASK_ASRC_VX_UL_IDX] =
+							ABE_TASK_ID(C_ABE_FW_TASK_ASRC_VX_UL_16_SIB);
+				} else {
+					/* Do nothing, Scheduling Table has already been patched */
 				}
 			}
 		}
@@ -764,18 +764,17 @@ void abe_init_io_tasks(u32 id, abe_data_format_t *format,
 						OMAP_ABE_PORT_ACTIVITY_IDLE) &&
 						(abe_port[VX_UL_PORT].status ==
 						OMAP_ABE_PORT_ACTIVITY_IDLE)) {
-					/*
-					 * The 1st opened port is VX_UL_PORT
-					 * both VX_UL ASRC and VX_DL ASRC will
-					 * add/remove sample referring to VX_UL
-					 * flow_counter
-					 */
-					abe->MultiFrame[TASK_ASRC_VX_DL_SLT]
-						[TASK_ASRC_VX_DL_IDX] =
-						ABE_TASK_ID(C_ABE_FW_TASK_ASRC_VX_DL_8_SIB);
-					abe->MultiFrame[TASK_ASRC_VX_UL_SLT]
-						[TASK_ASRC_VX_UL_IDX] =
-						ABE_TASK_ID(C_ABE_FW_TASK_ASRC_VX_UL_8);
+					/* the 1st opened port is VX_UL_PORT */
+					/* both VX_UL ASRC and VX_DL ASRC will add/remove sample
+						referring to VX_UL flow_counter */
+						abe->MultiFrame[TASK_ASRC_VX_DL_SLT]
+							[TASK_ASRC_VX_DL_IDX] =
+							ABE_TASK_ID(C_ABE_FW_TASK_ASRC_VX_DL_8_SIB);
+						abe->MultiFrame[TASK_ASRC_VX_UL_SLT]
+							[TASK_ASRC_VX_UL_IDX] =
+							ABE_TASK_ID(C_ABE_FW_TASK_ASRC_VX_UL_8);
+				} else {
+					/* Do nothing, Scheduling Table has already been patched */
 				}
 			} else {
 				abe->MultiFrame[TASK_VX_UL_SLT][TASK_VX_UL_IDX] =
@@ -784,29 +783,27 @@ void abe_init_io_tasks(u32 id, abe_data_format_t *format,
 				   ABE_TASK_ID(C_ABE_FW_TASK_ECHO_REF_48_16); */
 				smem1 = Voice_16k_UL_labelID;
 				if ((abe_port[VX_DL_PORT].status ==
-					OMAP_ABE_PORT_ACTIVITY_IDLE) &&
-					(abe_port[VX_UL_PORT].status ==
-					OMAP_ABE_PORT_ACTIVITY_IDLE)) {
-					/*
-					 * The 1st opened port is VX_UL_PORT
-					 * both VX_UL ASRC and VX_DL ASRC will
-					 * add/remove sample referring to VX_UL
-					 * flow_counter
-					 */
-					abe->MultiFrame[TASK_ASRC_VX_DL_SLT]
-						[TASK_ASRC_VX_DL_IDX] =
-						ABE_TASK_ID(C_ABE_FW_TASK_ASRC_VX_DL_16_SIB);
-					abe->MultiFrame[TASK_ASRC_VX_UL_SLT]
-						[TASK_ASRC_VX_UL_IDX] =
-						ABE_TASK_ID(C_ABE_FW_TASK_ASRC_VX_UL_16);
+						OMAP_ABE_PORT_ACTIVITY_IDLE) &&
+						(abe_port[VX_UL_PORT].status ==
+						OMAP_ABE_PORT_ACTIVITY_IDLE)) {
+					/* the 1st opened port is VX_UL_PORT */
+					/* both VX_UL ASRC and VX_DL ASRC will add/remove sample
+						referring to VX_UL flow_counter */
+						abe->MultiFrame[TASK_ASRC_VX_DL_SLT]
+							[TASK_ASRC_VX_DL_IDX] =
+							ABE_TASK_ID(C_ABE_FW_TASK_ASRC_VX_DL_16_SIB);
+						abe->MultiFrame[TASK_ASRC_VX_UL_SLT]
+							[TASK_ASRC_VX_UL_IDX] =
+							ABE_TASK_ID(C_ABE_FW_TASK_ASRC_VX_UL_16);
+				} else {
+					/* Do nothing, Scheduling Table has already been patched */
 				}
 			}
 		}
 		/* check for 8kHz/16kHz */
 		if (BT_VX_DL_PORT == id) {
-			abe->MultiFrame[TASK_IO_BT_VX_DL_SLT]
-					[TASK_IO_BT_VX_DL_IDX] =
-					ABE_TASK_ID(C_ABE_FW_TASK_IO_BT_VX_DL);
+			abe->MultiFrame[TASK_IO_BT_VX_DL_SLT][TASK_IO_BT_VX_DL_IDX] =
+						ABE_TASK_ID(C_ABE_FW_TASK_IO_BT_VX_DL);
 			abe_block_copy(COPY_FROM_ABE_TO_HOST, ABE_DMEM,
 				       D_maxTaskBytesInSlot_ADDR, &dOppMode32,
 				       sizeof(u32));
@@ -823,21 +820,20 @@ void abe_init_io_tasks(u32 id, abe_data_format_t *format,
 					smem1 = BT_DL_8k_labelID;
 				}
 				if ((abe_port[BT_VX_DL_PORT].status ==
-					OMAP_ABE_PORT_ACTIVITY_IDLE) &&
-					(abe_port[BT_VX_UL_PORT].status ==
-					OMAP_ABE_PORT_ACTIVITY_IDLE)) {
-					/*
-					 * The 1st opened port is BT_VX_DL_PORT
-					 * both BT_VX_DL ASRC and BT_VX_UL ASRC
-					 * will add/remove sample referring
-					 * to BT_VX_DL flow_counter
-					 */
-					abe->MultiFrame[TASK_ASRC_BT_DL_SLT]
-						[TASK_ASRC_BT_DL_IDX] =
-						ABE_TASK_ID(C_ABE_FW_TASK_ASRC_BT_DL_8);
-					abe->MultiFrame[TASK_ASRC_BT_UL_SLT]
-						[TASK_ASRC_BT_UL_IDX] =
-						ABE_TASK_ID(C_ABE_FW_TASK_ASRC_BT_UL_8_SIB);
+						OMAP_ABE_PORT_ACTIVITY_IDLE) &&
+						(abe_port[BT_VX_UL_PORT].status ==
+						OMAP_ABE_PORT_ACTIVITY_IDLE)) {
+					/* the 1st opened port is BT_VX_DL_PORT */
+					/* both BT_VX_DL ASRC and BT_VX_UL ASRC will add/remove sample
+						referring to BT_VX_DL flow_counter */
+						abe->MultiFrame[TASK_ASRC_BT_DL_SLT]
+							[TASK_ASRC_BT_DL_IDX] =
+							ABE_TASK_ID(C_ABE_FW_TASK_ASRC_BT_DL_8);
+						abe->MultiFrame[TASK_ASRC_BT_UL_SLT]
+							[TASK_ASRC_BT_UL_IDX] =
+							ABE_TASK_ID(C_ABE_FW_TASK_ASRC_BT_UL_8_SIB);
+				} else {
+					/* Do nothing, Scheduling Table has already been patched */
 				}
 			} else {
 				if (dOppMode32 == DOPPMODE32_OPP100) {
@@ -852,28 +848,26 @@ void abe_init_io_tasks(u32 id, abe_data_format_t *format,
 					smem1 = BT_DL_16k_labelID;
 				}
 				if ((abe_port[BT_VX_DL_PORT].status ==
-					OMAP_ABE_PORT_ACTIVITY_IDLE) &&
-					(abe_port[BT_VX_UL_PORT].status ==
-					OMAP_ABE_PORT_ACTIVITY_IDLE)) {
-					/*
-					 * The 1st opened port is BT_VX_DL_PORT
-					 * both BT_VX_DL ASRC and BT_VX_UL ASRC
-					 * will add/remove sample
-					 * referring to BT_VX_DL flow_counter
-					 */
-					abe->MultiFrame[TASK_ASRC_BT_DL_SLT]
-						[TASK_ASRC_BT_DL_IDX] =
-						ABE_TASK_ID(C_ABE_FW_TASK_ASRC_BT_DL_16);
-					abe->MultiFrame[TASK_ASRC_BT_UL_SLT]
-						[TASK_ASRC_BT_UL_IDX] =
-						ABE_TASK_ID(C_ABE_FW_TASK_ASRC_BT_UL_16_SIB);
+						OMAP_ABE_PORT_ACTIVITY_IDLE) &&
+						(abe_port[BT_VX_UL_PORT].status ==
+						OMAP_ABE_PORT_ACTIVITY_IDLE)) {
+					/* the 1st opened port is BT_VX_DL_PORT */
+					/* both BT_VX_DL ASRC and BT_VX_UL ASRC will add/remove sample
+						referring to BT_VX_DL flow_counter */
+						abe->MultiFrame[TASK_ASRC_BT_DL_SLT]
+							[TASK_ASRC_BT_DL_IDX] =
+							ABE_TASK_ID(C_ABE_FW_TASK_ASRC_BT_DL_16);
+						abe->MultiFrame[TASK_ASRC_BT_UL_SLT]
+							[TASK_ASRC_BT_UL_IDX] =
+							ABE_TASK_ID(C_ABE_FW_TASK_ASRC_BT_UL_16_SIB);
+				} else {
+					/* Do nothing, Scheduling Table has already been patched */
 				}
 			}
 		}
 		/* check for 8kHz/16kHz */
 		if (BT_VX_UL_PORT == id) {
-			abe->MultiFrame[TASK_IO_BT_VX_UL_SLT]
-					[TASK_IO_BT_VX_UL_IDX] =
+			abe->MultiFrame[TASK_IO_BT_VX_UL_SLT][TASK_IO_BT_VX_UL_IDX] =
 					ABE_TASK_ID(C_ABE_FW_TASK_IO_BT_VX_UL);
 			/* set the SMEM buffer -- programming sequence */
 			abe_block_copy(COPY_FROM_ABE_TO_HOST, ABE_DMEM,
@@ -890,22 +884,20 @@ void abe_init_io_tasks(u32 id, abe_data_format_t *format,
 					/* at OPP 50 without ASRC */
 					smem1 = BT_UL_8k_labelID;
 				if ((abe_port[BT_VX_UL_PORT].status ==
-					OMAP_ABE_PORT_ACTIVITY_IDLE) &&
-					(abe_port[BT_VX_DL_PORT].status ==
-					OMAP_ABE_PORT_ACTIVITY_IDLE)) {
-					/*
-					 * The 1st opened port is BT_VX_UL_PORT
-					 * both BT_VX_UL ASRC and
-					 * BT_VX_DL ASRC will add/remove
-					 * sample referring to BT_VX_UL
-					 * flow_counter
-					 */
-					abe->MultiFrame[TASK_ASRC_BT_UL_SLT]
-						[TASK_ASRC_BT_UL_IDX] =
-						ABE_TASK_ID(C_ABE_FW_TASK_ASRC_BT_UL_8);
-					abe->MultiFrame[TASK_ASRC_BT_DL_SLT]
-						[TASK_ASRC_BT_DL_IDX] =
-						ABE_TASK_ID(C_ABE_FW_TASK_ASRC_BT_DL_8_SIB);
+						OMAP_ABE_PORT_ACTIVITY_IDLE) &&
+						(abe_port[BT_VX_DL_PORT].status ==
+						OMAP_ABE_PORT_ACTIVITY_IDLE)) {
+					/* the 1st opened port is BT_VX_UL_PORT */
+					/* both BT_VX_UL ASRC and BT_VX_DL ASRC will add/remove sample
+						referring to BT_VX_UL flow_counter */
+						abe->MultiFrame[TASK_ASRC_BT_UL_SLT]
+							[TASK_ASRC_BT_UL_IDX] =
+							ABE_TASK_ID(C_ABE_FW_TASK_ASRC_BT_UL_8);
+						abe->MultiFrame[TASK_ASRC_BT_DL_SLT]
+							[TASK_ASRC_BT_DL_IDX] =
+							ABE_TASK_ID(C_ABE_FW_TASK_ASRC_BT_DL_8_SIB);
+				} else {
+					/* Do nothing, Scheduling Table has already been patched */
 				}
 			} else {
 				abe->MultiFrame[TASK_BT_UL_8_48_SLT]
@@ -921,18 +913,17 @@ void abe_init_io_tasks(u32 id, abe_data_format_t *format,
 						OMAP_ABE_PORT_ACTIVITY_IDLE) &&
 						(abe_port[BT_VX_DL_PORT].status ==
 						OMAP_ABE_PORT_ACTIVITY_IDLE)) {
-					/*
-					 * The 1st opened port is BT_VX_UL_PORT
-					 * both BT_VX_UL ASRC and BT_VX_DL ASRC
-					 * will add/remove sample
-					 * referring to BT_VX_UL flow_counter
-					 */
-					abe->MultiFrame[TASK_ASRC_BT_UL_SLT]
-						[TASK_ASRC_BT_UL_IDX] =
-						ABE_TASK_ID(C_ABE_FW_TASK_ASRC_BT_UL_16);
-					abe->MultiFrame[TASK_ASRC_BT_DL_SLT]
-						[TASK_ASRC_BT_DL_IDX] =
-						ABE_TASK_ID(C_ABE_FW_TASK_ASRC_BT_DL_16_SIB);
+					/* the 1st opened port is BT_VX_UL_PORT */
+					/* both BT_VX_UL ASRC and BT_VX_DL ASRC will add/remove sample
+						referring to BT_VX_UL flow_counter */
+						abe->MultiFrame[TASK_ASRC_BT_UL_SLT]
+							[TASK_ASRC_BT_UL_IDX] =
+							ABE_TASK_ID(C_ABE_FW_TASK_ASRC_BT_UL_16);
+						abe->MultiFrame[TASK_ASRC_BT_DL_SLT]
+							[TASK_ASRC_BT_DL_IDX] =
+							ABE_TASK_ID(C_ABE_FW_TASK_ASRC_BT_DL_16_SIB);
+				} else {
+					/* Do nothing, Scheduling Table has already been patched */
 				}
 			}
 		}
@@ -943,13 +934,11 @@ void abe_init_io_tasks(u32 id, abe_data_format_t *format,
 			smem1 = smem_mm_dl;
 		}
 		if (TONES_DL_PORT == id) {
-			abe->MultiFrame[TASK_IO_TONES_DL_SLT]
-				[TASK_IO_TONES_DL_IDX] =
+			abe->MultiFrame[TASK_IO_TONES_DL_SLT][TASK_IO_TONES_DL_IDX] =
 				ABE_TASK_ID(C_ABE_FW_TASK_IO_TONES_DL);
 		}
 		if (MM_EXT_IN_PORT == id) {
-			abe->MultiFrame[TASK_IO_MM_EXT_IN_SLT]
-				[TASK_IO_MM_EXT_IN_IDX] =
+			abe->MultiFrame[TASK_IO_MM_EXT_IN_SLT][TASK_IO_MM_EXT_IN_IDX] =
 				ABE_TASK_ID(C_ABE_FW_TASK_IO_MM_EXT_IN);
 			/* set the SMEM buffer -- programming sequence */
 			abe_block_copy(COPY_FROM_ABE_TO_HOST, ABE_DMEM,
@@ -962,36 +951,28 @@ void abe_init_io_tasks(u32 id, abe_data_format_t *format,
 				/* at OPP 50 without ASRC */
 				smem1 = smem_mm_ext_in_opp50;
 		}
-
 		if (MM_EXT_OUT_PORT == id) {
-			abe->MultiFrame[TASK_IO_MM_EXT_OUT_SLT]
-				[TASK_IO_MM_EXT_OUT_IDX] =
+			abe->MultiFrame[TASK_IO_MM_EXT_OUT_SLT][TASK_IO_MM_EXT_OUT_IDX] =
 				ABE_TASK_ID(C_ABE_FW_TASK_IO_MM_EXT_OUT);
 		}
 		if (DMIC_PORT == id) {
-			abe->MultiFrame[TASK_IO_DMIC_HALF1_SLT]
-				[TASK_IO_DMIC_HALF1_IDX] =
+			abe->MultiFrame[TASK_IO_DMIC_HALF1_SLT][TASK_IO_DMIC_HALF1_IDX] =
 				ABE_TASK_ID(C_ABE_FW_TASK_IO_DMIC);
-			abe->MultiFrame[TASK_IO_DMIC_HALF2_SLT]
-				[TASK_IO_DMIC_HALF2_IDX] =
+			abe->MultiFrame[TASK_IO_DMIC_HALF2_SLT][TASK_IO_DMIC_HALF2_IDX] =
 				ABE_TASK_ID(C_ABE_FW_TASK_IO_DMIC);
 		}
 		if (VIB_DL_PORT == id) {
-			abe->MultiFrame[TASK_IO_VIB_DL_SLT]
-				[TASK_IO_VIB_DL_IDX] =
+			abe->MultiFrame[TASK_IO_VIB_DL_SLT][TASK_IO_VIB_DL_IDX] =
 				ABE_TASK_ID(C_ABE_FW_TASK_IO_VIB_DL);
 		}
 		if (PDM_UL_PORT == id) {
-			abe->MultiFrame[TASK_IO_PDM_UL_SLT]
-				[TASK_IO_PDM_UL_IDX] =
+			abe->MultiFrame[TASK_IO_PDM_UL_SLT][TASK_IO_PDM_UL_IDX] =
 				ABE_TASK_ID(C_ABE_FW_TASK_IO_PDM_UL);
 		}
 		if (PDM_DL_PORT == id) {
-			abe->MultiFrame[TASK_IO_PDM_DL_HALF1_SLT]
-				[TASK_IO_PDM_DL_HALF1_IDX] =
+			abe->MultiFrame[TASK_IO_PDM_DL_HALF1_SLT][TASK_IO_PDM_DL_HALF1_IDX] =
 				ABE_TASK_ID(C_ABE_FW_TASK_IO_PDM_DL);
-			abe->MultiFrame[TASK_IO_PDM_DL_HALF2_SLT]
-				[TASK_IO_PDM_DL_HALF2_IDX] =
+			abe->MultiFrame[TASK_IO_PDM_DL_HALF2_SLT][TASK_IO_PDM_DL_HALF2_IDX] =
 				ABE_TASK_ID(C_ABE_FW_TASK_IO_PDM_DL);
 		}
 
@@ -1155,42 +1136,42 @@ void abe_reset_all_ports(void)
 	for (i = 0; i < LAST_PORT_ID; i++)
 		abe_reset_port(i);
 	/* mixers' configuration */
-	abe_write_mixer(MIXDL1, MUTE_GAIN, RAMP_5MS, MIX_DL1_INPUT_MM_DL);
-	abe_write_mixer(MIXDL1, MUTE_GAIN, RAMP_5MS, MIX_DL1_INPUT_MM_UL2);
-	abe_write_mixer(MIXDL1, MUTE_GAIN, RAMP_5MS, MIX_DL1_INPUT_VX_DL);
-	abe_write_mixer(MIXDL1, MUTE_GAIN, RAMP_5MS, MIX_DL1_INPUT_TONES);
-	abe_write_mixer(MIXDL2, MUTE_GAIN, RAMP_5MS, MIX_DL2_INPUT_TONES);
-	abe_write_mixer(MIXDL2, MUTE_GAIN, RAMP_5MS, MIX_DL2_INPUT_VX_DL);
-	abe_write_mixer(MIXDL2, MUTE_GAIN, RAMP_5MS, MIX_DL2_INPUT_MM_DL);
-	abe_write_mixer(MIXDL2, MUTE_GAIN, RAMP_5MS, MIX_DL2_INPUT_MM_UL2);
-	abe_write_mixer(MIXSDT, MUTE_GAIN, RAMP_5MS, MIX_SDT_INPUT_UP_MIXER);
-	abe_write_mixer(MIXSDT, GAIN_0dB, RAMP_5MS, MIX_SDT_INPUT_DL1_MIXER);
-	abe_write_mixer(MIXECHO, MUTE_GAIN, RAMP_5MS, MIX_ECHO_DL1);
-	abe_write_mixer(MIXECHO, MUTE_GAIN, RAMP_5MS, MIX_ECHO_DL2);
-	abe_write_mixer(MIXAUDUL, MUTE_GAIN, RAMP_5MS, MIX_AUDUL_INPUT_MM_DL);
-	abe_write_mixer(MIXAUDUL, MUTE_GAIN, RAMP_5MS, MIX_AUDUL_INPUT_TONES);
-	abe_write_mixer(MIXAUDUL, GAIN_0dB, RAMP_5MS, MIX_AUDUL_INPUT_UPLINK);
-	abe_write_mixer(MIXAUDUL, MUTE_GAIN, RAMP_5MS, MIX_AUDUL_INPUT_VX_DL);
-	abe_write_mixer(MIXVXREC, MUTE_GAIN, RAMP_5MS, MIX_VXREC_INPUT_TONES);
-	abe_write_mixer(MIXVXREC, MUTE_GAIN, RAMP_5MS, MIX_VXREC_INPUT_VX_DL);
-	abe_write_mixer(MIXVXREC, MUTE_GAIN, RAMP_5MS, MIX_VXREC_INPUT_MM_DL);
-	abe_write_mixer(MIXVXREC, MUTE_GAIN, RAMP_5MS, MIX_VXREC_INPUT_VX_UL);
-	abe_write_gain(GAINS_DMIC1, GAIN_0dB, RAMP_5MS, GAIN_LEFT_OFFSET);
-	abe_write_gain(GAINS_DMIC1, GAIN_0dB, RAMP_5MS, GAIN_RIGHT_OFFSET);
-	abe_write_gain(GAINS_DMIC2, GAIN_0dB, RAMP_5MS, GAIN_LEFT_OFFSET);
-	abe_write_gain(GAINS_DMIC2, GAIN_0dB, RAMP_5MS, GAIN_RIGHT_OFFSET);
-	abe_write_gain(GAINS_DMIC3, GAIN_0dB, RAMP_5MS, GAIN_LEFT_OFFSET);
-	abe_write_gain(GAINS_DMIC3, GAIN_0dB, RAMP_5MS, GAIN_RIGHT_OFFSET);
-	abe_write_gain(GAINS_AMIC, GAIN_0dB, RAMP_5MS, GAIN_LEFT_OFFSET);
-	abe_write_gain(GAINS_AMIC, GAIN_0dB, RAMP_5MS, GAIN_RIGHT_OFFSET);
-	abe_write_gain(GAINS_SPLIT, GAIN_0dB, RAMP_5MS, GAIN_LEFT_OFFSET);
-	abe_write_gain(GAINS_SPLIT, GAIN_0dB, RAMP_5MS, GAIN_RIGHT_OFFSET);
-	abe_write_gain(GAINS_DL1, GAIN_0dB, RAMP_5MS, GAIN_LEFT_OFFSET);
-	abe_write_gain(GAINS_DL1, GAIN_0dB, RAMP_5MS, GAIN_RIGHT_OFFSET);
-	abe_write_gain(GAINS_DL2, GAIN_0dB, RAMP_5MS, GAIN_LEFT_OFFSET);
-	abe_write_gain(GAINS_DL2, GAIN_0dB, RAMP_5MS, GAIN_RIGHT_OFFSET);
-	abe_write_gain(GAINS_BTUL, GAIN_0dB, RAMP_5MS, GAIN_LEFT_OFFSET);
-	abe_write_gain(GAINS_BTUL, GAIN_0dB, RAMP_5MS, GAIN_RIGHT_OFFSET);
+	abe_write_mixer(MIXDL1, MUTE_GAIN, RAMP_100MS, MIX_DL1_INPUT_MM_DL);
+	abe_write_mixer(MIXDL1, MUTE_GAIN, RAMP_100MS, MIX_DL1_INPUT_MM_UL2);
+	abe_write_mixer(MIXDL1, MUTE_GAIN, RAMP_100MS, MIX_DL1_INPUT_VX_DL);
+	abe_write_mixer(MIXDL1, MUTE_GAIN, RAMP_100MS, MIX_DL1_INPUT_TONES);
+	abe_write_mixer(MIXDL2, MUTE_GAIN, RAMP_100MS, MIX_DL2_INPUT_TONES);
+	abe_write_mixer(MIXDL2, MUTE_GAIN, RAMP_100MS, MIX_DL2_INPUT_VX_DL);
+	abe_write_mixer(MIXDL2, MUTE_GAIN, RAMP_100MS, MIX_DL2_INPUT_MM_DL);
+	abe_write_mixer(MIXDL2, MUTE_GAIN, RAMP_100MS, MIX_DL2_INPUT_MM_UL2);
+	abe_write_mixer(MIXSDT, MUTE_GAIN, RAMP_100MS, MIX_SDT_INPUT_UP_MIXER);
+	abe_write_mixer(MIXSDT, GAIN_0dB, RAMP_100MS, MIX_SDT_INPUT_DL1_MIXER);
+	abe_write_mixer(MIXECHO, MUTE_GAIN, RAMP_100MS, MIX_ECHO_DL1);
+	abe_write_mixer(MIXECHO, MUTE_GAIN, RAMP_100MS, MIX_ECHO_DL2);
+	abe_write_mixer(MIXAUDUL, MUTE_GAIN, RAMP_100MS, MIX_AUDUL_INPUT_MM_DL);
+	abe_write_mixer(MIXAUDUL, MUTE_GAIN, RAMP_100MS, MIX_AUDUL_INPUT_TONES);
+	abe_write_mixer(MIXAUDUL, GAIN_0dB, RAMP_100MS, MIX_AUDUL_INPUT_UPLINK);
+	abe_write_mixer(MIXAUDUL, MUTE_GAIN, RAMP_100MS, MIX_AUDUL_INPUT_VX_DL);
+	abe_write_mixer(MIXVXREC, MUTE_GAIN, RAMP_100MS, MIX_VXREC_INPUT_TONES);
+	abe_write_mixer(MIXVXREC, MUTE_GAIN, RAMP_100MS, MIX_VXREC_INPUT_VX_DL);
+	abe_write_mixer(MIXVXREC, MUTE_GAIN, RAMP_100MS, MIX_VXREC_INPUT_MM_DL);
+	abe_write_mixer(MIXVXREC, MUTE_GAIN, RAMP_100MS, MIX_VXREC_INPUT_VX_UL);
+	abe_write_gain(GAINS_DMIC1, GAIN_0dB, RAMP_100MS, GAIN_LEFT_OFFSET);
+	abe_write_gain(GAINS_DMIC1, GAIN_0dB, RAMP_100MS, GAIN_RIGHT_OFFSET);
+	abe_write_gain(GAINS_DMIC2, GAIN_0dB, RAMP_100MS, GAIN_LEFT_OFFSET);
+	abe_write_gain(GAINS_DMIC2, GAIN_0dB, RAMP_100MS, GAIN_RIGHT_OFFSET);
+	abe_write_gain(GAINS_DMIC3, GAIN_0dB, RAMP_100MS, GAIN_LEFT_OFFSET);
+	abe_write_gain(GAINS_DMIC3, GAIN_0dB, RAMP_100MS, GAIN_RIGHT_OFFSET);
+	abe_write_gain(GAINS_AMIC, GAIN_0dB, RAMP_100MS, GAIN_LEFT_OFFSET);
+	abe_write_gain(GAINS_AMIC, GAIN_0dB, RAMP_100MS, GAIN_RIGHT_OFFSET);
+	abe_write_gain(GAINS_SPLIT, GAIN_0dB, RAMP_100MS, GAIN_LEFT_OFFSET);
+	abe_write_gain(GAINS_SPLIT, GAIN_0dB, RAMP_100MS, GAIN_RIGHT_OFFSET);
+	abe_write_gain(GAINS_DL1, GAIN_0dB, RAMP_100MS, GAIN_LEFT_OFFSET);
+	abe_write_gain(GAINS_DL1, GAIN_0dB, RAMP_100MS, GAIN_RIGHT_OFFSET);
+	abe_write_gain(GAINS_DL2, GAIN_0dB, RAMP_100MS, GAIN_LEFT_OFFSET);
+	abe_write_gain(GAINS_DL2, GAIN_0dB, RAMP_100MS, GAIN_RIGHT_OFFSET);
+	abe_write_gain(GAINS_BTUL, GAIN_0dB, RAMP_100MS, GAIN_LEFT_OFFSET);
+	abe_write_gain(GAINS_BTUL, GAIN_0dB, RAMP_100MS, GAIN_RIGHT_OFFSET);
 }
 
 /**
@@ -1322,6 +1303,14 @@ void abe_clean_temporary_buffers(u32 id)
 			      S_EARP_48_96_LP_data_sizeof << 3);
 		abe_reset_mem(ABE_SMEM, S_IHF_48_96_LP_data_ADDR << 3,
 			      S_IHF_48_96_LP_data_sizeof << 3);
+		abe_reset_mem(ABE_SMEM, S_APS_DL1_EQ_data_ADDR << 3,
+			      S_APS_DL1_EQ_data_sizeof << 3);
+		abe_reset_mem(ABE_SMEM, S_APS_DL2_EQ_data_ADDR << 3,
+			      S_APS_DL2_EQ_data_sizeof << 3);
+		abe_reset_mem(ABE_SMEM, S_APS_DL2_L_IIRmem1_ADDR << 3,
+			      S_APS_DL2_L_IIRmem1_sizeof << 3);
+		abe_reset_mem(ABE_SMEM, S_APS_DL2_R_IIRmem1_ADDR << 3,
+			      S_APS_DL2_R_IIRmem1_sizeof << 3);
 		abe_reset_gain_mixer(GAINS_DL1, GAIN_LEFT_OFFSET);
 		abe_reset_gain_mixer(GAINS_DL1, GAIN_RIGHT_OFFSET);
 		abe_reset_gain_mixer(GAINS_DL2, GAIN_LEFT_OFFSET);
