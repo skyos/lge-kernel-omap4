@@ -30,6 +30,37 @@ MODULE_AUTHOR("Texas Instruments");
 MODULE_DESCRIPTION("OMAP Video library");
 MODULE_LICENSE("GPL");
 
+static int max_downscale = -1;
+
+static void omap_vout_init_max_downscale(void)
+{
+	if (max_downscale > 0)
+		return;
+
+	if (cpu_is_omap24xx())
+		max_downscale = 2;
+	else if (cpu_is_omap34xx())
+		max_downscale = 4;
+}
+
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
+/* Overide max_downscale which specified by platform. In OMAP3, by using
+ * ISP resizer, the value could be up to 8(1/8x).
+ * This function should be called before omap_vout_new_window() or
+ * omap_vout_new_crop() to proper clamping.
+ */
+void omap_vout_set_max_downscale(int new_scale)
+{
+	if (new_scale == max_downscale)
+		return;
+
+	printk(KERN_INFO "<%s> Update max downscale from 1/%d to 1/%d\n",
+			__func__, max_downscale, new_scale);
+	max_downscale = new_scale;
+}
+EXPORT_SYMBOL_GPL(omap_vout_set_max_downscale);
+#endif
+
 /* Return the default overlay cropping rectangle in crop given the image
  * size in pix and the video display size in fbuf.  The default
  * cropping rectangle is the largest rectangle no larger than the capture size
@@ -107,26 +138,30 @@ int omap_vout_new_window(struct v4l2_rect *crop,
 		struct v4l2_window *win, struct v4l2_framebuffer *fbuf,
 		struct v4l2_window *new_win)
 {
-	int err;
+        int err;
 
-//	err = omap_vout_try_window(fbuf, new_win);
-//	if (err)
-//		return err;
+        err = omap_vout_try_window(fbuf, new_win);
+        if (err)
+                return err;
 
 	/* update our preview window */
 	win->w = new_win->w;
 	win->field = new_win->field;
 	win->chromakey = new_win->chromakey;
+	if (cpu_is_omap44xx())
+		//win->zorder = new_win->zorder;
 
 	/* Adjust the cropping window to allow for resizing limitation */
+	omap_vout_init_max_downscale();
+	if (max_downscale > 0) {
+		if ((crop->height/win->w.height) >= max_downscale)
+			crop->height = win->w.height * max_downscale;
+
+		if ((crop->width/win->w.width) >= max_downscale)
+			crop->width = win->w.width * max_downscale;
+	}
+
 	if (cpu_is_omap24xx()) {
-		/* For 24xx limit is 8x to 1/2x scaling. */
-		if ((crop->height/win->w.height) >= 2)
-			crop->height = win->w.height * 2;
-
-		if ((crop->width/win->w.width) >= 2)
-			crop->width = win->w.width * 2;
-
 		if (crop->width > 768) {
 			/* The OMAP2420 vertical resizing line buffer is 768
 			 * pixels wide. If the cropped image is wider than
@@ -135,13 +170,6 @@ int omap_vout_new_window(struct v4l2_rect *crop,
 			if (crop->height != win->w.height)
 				crop->width = 768;
 		}
-	} else if (cpu_is_omap34xx()) {
-		/* For 34xx limit is 8x to 1/4x scaling. */
-		if ((crop->height/win->w.height) >= 4)
-			crop->height = win->w.height * 4;
-
-		if ((crop->width/win->w.width) >= 4)
-			crop->width = win->w.width * 4;
 	}
 	return 0;
 }
@@ -203,14 +231,18 @@ int omap_vout_new_crop(struct v4l2_pix_format *pix,
 				try_crop.width = 768;
 		}
 	}
+
+	omap_vout_init_max_downscale();
+
 	/* vertical resizing */
 	vresize = (1024 * crop->height) / win->w.height;
-	if (cpu_is_omap24xx() && (vresize > 2048))
-		vresize = 2048;
-	else if (cpu_is_omap34xx() && (vresize > 4096))
-		vresize = 4096;
+	if ((max_downscale > 0)
+			&& (vresize > max_downscale * 1024)) {
+		vresize = max_downscale * 1024;
+	}
 
-//	win->w.height = ((1024 * try_crop.height) / vresize) & ~1;
+
+	win->w.height = ((1024 * try_crop.height) / vresize) & ~1;
 	if (win->w.height == 0)
 		win->w.height = 2;
 	if (win->w.height + win->w.top > fbuf->fmt.height) {
@@ -218,18 +250,19 @@ int omap_vout_new_crop(struct v4l2_pix_format *pix,
 		 * display, so clip it to the display boundary and resize the
 		 * cropping height to maintain the vertical resizing ratio.
 		 */
-//		win->w.height = (fbuf->fmt.height - win->w.top) & ~1;
+
+		win->w.height = (fbuf->fmt.height - win->w.top) & ~1;
 		if (try_crop.height == 0)
 			try_crop.height = 2;
 	}
+
 	/* horizontal resizing */
 	hresize = (1024 * crop->width) / win->w.width;
-	if (cpu_is_omap24xx() && (hresize > 2048))
-		hresize = 2048;
-	else if (cpu_is_omap34xx() && (hresize > 4096))
-		hresize = 4096;
-
-//	win->w.width = ((1024 * try_crop.width) / hresize) & ~1;
+	if ((max_downscale > 0)
+			&& (hresize > max_downscale * 1024)) {
+		hresize = max_downscale * 1024;
+	}
+	win->w.width = ((1024 * try_crop.width) / hresize) & ~1;
 	if (win->w.width == 0)
 		win->w.width = 2;
 	if (win->w.width + win->w.left > fbuf->fmt.width) {
@@ -237,17 +270,21 @@ int omap_vout_new_crop(struct v4l2_pix_format *pix,
 		 * display, so clip it to the display boundary and resize the
 		 * cropping width to maintain the horizontal resizing ratio.
 		 */
-//		win->w.width = (fbuf->fmt.width - win->w.left) & ~1;
+
+		win->w.width = (fbuf->fmt.width - win->w.left) & ~1;
 		if (try_crop.width == 0)
 			try_crop.width = 2;
 	}
+
+	if (max_downscale > 0) {
+		if ((try_crop.height/win->w.height) >= max_downscale)
+			try_crop.height = win->w.height * max_downscale;
+
+		if ((try_crop.width/win->w.width) >= max_downscale)
+			try_crop.width = win->w.width * max_downscale;
+	}
+
 	if (cpu_is_omap24xx()) {
-		if ((try_crop.height/win->w.height) >= 2)
-			try_crop.height = win->w.height * 2;
-
-		if ((try_crop.width/win->w.width) >= 2)
-			try_crop.width = win->w.width * 2;
-
 		if (try_crop.width > 768) {
 			/* The OMAP2420 vertical resizing line buffer is
 			 * 768 pixels wide.  If the cropped image is wider
@@ -256,12 +293,6 @@ int omap_vout_new_crop(struct v4l2_pix_format *pix,
 			if (try_crop.height != win->w.height)
 				try_crop.width = 768;
 		}
-	} else if (cpu_is_omap34xx()) {
-		if ((try_crop.height/win->w.height) >= 4)
-			try_crop.height = win->w.height * 4;
-
-		if ((try_crop.width/win->w.width) >= 4)
-			try_crop.width = win->w.width * 4;
 	}
 	/* update our cropping rectangle and we're done */
 	*crop = try_crop;

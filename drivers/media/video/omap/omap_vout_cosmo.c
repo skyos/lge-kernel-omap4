@@ -91,9 +91,11 @@ enum dma_channel_state {
 #ifdef CONFIG_ARCH_OMAP4
 #define VID_MAX_WIDTH		4096	/* Largest width */
 #define VID_MAX_HEIGHT		4096	/* Largest height */
+#define OMAP_VOUT_MAX_BUF_SIZE (VID_MAX_WIDTH*VID_MAX_HEIGHT*4)
 #else
 #define VID_MAX_WIDTH		1280	/* Largest width */
 #define VID_MAX_HEIGHT		720	/* Largest height */
+#define OMAP_VOUT_MAX_BUF_SIZE (VID_MAX_WIDTH*VID_MAX_HEIGHT*2)
 #endif
 /* Mimimum requirement is 2x2 for DSS */
 #define VID_MIN_WIDTH		2
@@ -103,10 +105,7 @@ enum dma_channel_state {
 #define MAX_PIXELS_PER_LINE     2048
 
 #define VRFB_TX_TIMEOUT         1000
-#define VRFB_NUM_BUFS		4
-
-/* Max buffer size tobe allocated during init */
-#define OMAP_VOUT_MAX_BUF_SIZE (VID_MAX_WIDTH*VID_MAX_HEIGHT*4)
+#define VRFB_NUM_BUFS          OMAP_VOUT_MAX_BUFFERS
 
 #define VDD2_OCP_FREQ_CONST     (cpu_is_omap34xx() ? \
 (cpu_is_omap3630() ? 200000 : 166000) : 0)
@@ -118,8 +117,8 @@ static struct videobuf_queue_ops video_vbq_ops;
 
 
 /* Variables configurable through module params*/
-static u32 video1_numbuffers = 3;
-static u32 video2_numbuffers = 3;
+static u32 video1_numbuffers = OMAP_VOUT_MAX_BUFFERS;
+static u32 video2_numbuffers = OMAP_VOUT_MAX_BUFFERS;
 static u32 video1_bufsize = OMAP_VOUT_MAX_BUF_SIZE;
 static u32 video2_bufsize = OMAP_VOUT_MAX_BUF_SIZE;
 static u32 video3_numbuffers = 3;
@@ -128,6 +127,7 @@ static u32 vid1_static_vrfb_alloc;
 static u32 vid2_static_vrfb_alloc;
 static int debug;
 
+static int vidioc_streamoff(struct file *file, void *fh, enum v4l2_buf_type i);
 /* Module parameters */
 module_param(video1_numbuffers, uint, S_IRUGO);
 MODULE_PARM_DESC(video1_numbuffers,
@@ -164,9 +164,7 @@ module_param(debug, bool, S_IRUGO);
 MODULE_PARM_DESC(debug, "Debug level (0-1)");
 
 
-#if 1 /* baeyoung.park 2011-02-17 */
 extern bool IsVideoTelephonyActivated(void);
-#endif
 
 static int vidioc_streamoff(struct file *file, void *fh, enum v4l2_buf_type i);
 
@@ -225,7 +223,6 @@ const static struct v4l2_fmtdesc omap_formats[] = {
 
 #define NUM_OUTPUT_FORMATS (ARRAY_SIZE(omap_formats))
 
-//#define DEBUG
 #ifdef DEBUG
 	#define DBG_PRINTK	printk
 	#define	INFO_PRINTK printk
@@ -264,9 +261,21 @@ static void omap_vout_free_buffer(unsigned long virtaddr, u32 buf_size)
 int omap_vout_try_format(struct v4l2_pix_format *pix)
 {
 	int ifmt, bpp = 0;
+	int img_size = pix->height * pix->width;
 
-	pix->height = clamp(pix->height, (u32)VID_MIN_HEIGHT,
-						(u32)VID_MAX_HEIGHT);
+	if (img_size <= VID_MAX_HEIGHT * VID_MAX_WIDTH) {
+		if (cpu_is_omap34xx())
+			pix->height = clamp(pix->height,
+					(u32)VID_MIN_HEIGHT,
+					(u32)VID_MAX_WIDTH);
+		else
+			pix->height = clamp(pix->height,
+					(u32)VID_MIN_HEIGHT,
+					(u32)VID_MAX_HEIGHT);
+	} else {
+		pix->height = clamp(pix->height, (u32)VID_MIN_HEIGHT,
+				(u32)VID_MAX_HEIGHT);
+	}
 	pix->width = clamp(pix->width, (u32)VID_MIN_WIDTH, (u32)VID_MAX_WIDTH);
 
 	for (ifmt = 0; ifmt < NUM_OUTPUT_FORMATS; ifmt++) {
@@ -353,12 +362,6 @@ static void omap_vout_tiler_buffer_free(struct omap_vout_device *vout,
 		count = VIDEO_MAX_FRAME - startindex;
 
 	for (i = startindex; i < startindex + count; i++) {
-//		printk("Tiler Free (%d) phy_addr(0x%08lx) phy_addr(0x%08lx) uv_addr(0x%08lx) uv_addr_alloc(0x%08lx)\n",
-//			i,
-//			vout->buf_info.buf_phy_addr[i],
-//			vout->buf_info.buf_phy_addr_alloced[i],
-//			vout->buf_info.buf_phy_uv_addr[i],
-//			vout->buf_info.buf_phy_uv_addr_alloced[i]);
 		if (vout->buf_info.buf_phy_addr_alloced[i])
 			tiler_free(vout->buf_info.buf_phy_addr_alloced[i]);
 		if (vout->buf_info.buf_phy_uv_addr_alloced[i])
@@ -443,12 +446,6 @@ static int omap_vout_tiler_buffer_setup(struct omap_vout_device *vout,
 				vout->buf_info.buf_phy_addr_alloced[i] ? 1 : 0,
 				vout->buf_info.buf_phy_uv_addr[i],
 				vout->buf_info.buf_phy_uv_addr_alloced[i] ? 1 : 0);
-//		printk("Tiler Setup (%d) phy_addr(0x%08lx) phy_addr(0x%08lx) uv_addr(0x%08lx) uv_addr_alloc(0x%08lx)\n",
-//			i,
-//			vout->buf_info.buf_phy_addr[i],
-//			vout->buf_info.buf_phy_addr_alloced[i],
-//			vout->buf_info.buf_phy_uv_addr[i],
-//			vout->buf_info.buf_phy_uv_addr_alloced[i]);
 		
 	}
 
@@ -527,6 +524,61 @@ static bool is_supported_rotation_for_3d(u8 rotation)
 		return false;
 }
 
+
+ /*
+  * Swap the overlay parameters in case of rotation is 90 or 270
+  */
+static void calc_overlay_window_params(struct omap_vout_device *vout,
+                                      struct omap_overlay_info *info)
+{
+       __s32   temp;
+       struct omap_overlay *ovl;
+       struct omapvideo_info *ovid;
+       struct omap_video_timings *timing;
+       struct v4l2_window *win;
+
+       ovid = &vout->vid_info;
+       ovl = ovid->overlays.named.lcd;
+       win = &vout->display_info.lcd.win;
+
+       timing = &ovl->manager->device->panel.timings;
+       switch (vout->display_info.lcd.rotation) {
+       case dss_rotation_90_degree:
+       /* Invert the height and width for 90  and 270 degree rotation */
+               temp = info->out_width;
+               info->out_width = info->out_height;
+               info->out_height = temp;
+#ifndef CONFIG_ARCH_OMAP4
+               info->pos_y = (timing->y_res - win->w.width) - win->w.left;
+               info->pos_x = win->w.top;
+#endif
+               break;
+
+       case dss_rotation_180_degree:
+#ifndef CONFIG_ARCH_OMAP4
+               info->pos_x = (timing->x_res - win->w.width) - win->w.left;
+               info->pos_y = (timing->y_res - win->w.height) - win->w.top;
+#endif
+               break;
+
+       case dss_rotation_270_degree:
+               temp = info->out_width;
+               info->out_width = info->out_height;
+               info->out_height = temp;
+#ifndef CONFIG_ARCH_OMAP4
+               info->pos_y = win->w.left;
+               info->pos_x = (timing->x_res - win->w.height) - win->w.top;
+#endif
+               break;
+
+       default:
+               info->pos_x = win->w.left;
+               info->pos_y = win->w.top;
+               break;
+               }
+}
+
+
 /*
  * Convert V4L2 pixel format to DSS pixel format
  */
@@ -547,10 +599,17 @@ enum omap_color_mode video_mode_to_dss_mode(struct v4l2_pix_format *pix)
 	case V4L2_PIX_FMT_UYVY:
 		mode = OMAP_DSS_COLOR_UYVY;
 		break;
+	case V4L2_PIX_FMT_RGB555:
+		mode = OMAP_DSS_COLOR_ARGB16_1555;
+		break;
+	case V4L2_PIX_FMT_RGB444:
+		mode = OMAP_DSS_COLOR_ARGB16;
+		break;
 	case V4L2_PIX_FMT_RGB565:
 		mode = OMAP_DSS_COLOR_RGB16;
 		break;
 	case V4L2_PIX_FMT_RGB24:
+	case V4L2_PIX_FMT_BGR24:
 		mode = OMAP_DSS_COLOR_RGB24P;
 		break;
 	case V4L2_PIX_FMT_RGB32:
@@ -584,24 +643,6 @@ static enum omap_dss_overlay_s3d_type v4l2_s3d_to_dss_s3d_type(enum v4l2_frame_p
 	}
 }
 
-/**
- * convert dss s3d type to v4l2 s3d type
- */
-//static enum v4l2_frame_pack_type dss_s3d_to_v4l2_s3d_type(enum omap_dss_overlay_s3d_type type)
-//{
-//	switch (type )
-//	{
-//	case omap_dss_overlay_s3d_top_bottom:
-//		return V4L2_FPACK_OVERUNDER;
-//	case omap_dss_overlay_s3d_side_by_side:
-//		return V4L2_FPACK_SIDEBYSIDE;
-//	case omap_dss_overlay_s3d_interlaced:
-//		return V4L2_FPACK_COL_IL;
-//	default :
-//		return V4L2_FPACK_NONE;
-//	}
-//
-//}
 
 /**
  * Get address at (x,y) in tiler memory
@@ -653,10 +694,6 @@ static int omap_vout_get_offset_tiler(enum omap_color_mode color,
 	}
 	else
 		addr_offset = tiler_stride(paddr) * y + x * ps;
-//	DBG_PRINTK("Caculate tiler offset paddr:0x%x, uv_addr:0x%x, (%d,%d) paddr_offset:%d, uv_ofset:%d\n",
-//			paddr, uv_addr,
-//			x, y,
-//			addr_offset, uv_offset);
 	if ( paddr_ret )
 		*paddr_ret = paddr + addr_offset;
 	if ( uv_addr_ret )
@@ -805,6 +842,7 @@ static int omap_vout_display_set_alpha_and_trans(struct omap_vout_device *vout, 
 		{
 			info.trans_enabled = true;
 			info_changed = true;
+		printk("Changed at %d\n",__LINE__);
 		}
 
 		//src type
@@ -812,6 +850,7 @@ static int omap_vout_display_set_alpha_and_trans(struct omap_vout_device *vout, 
 		{
 			info.trans_key_type = OMAP_DSS_COLOR_KEY_VID_SRC;
 			info_changed =true;
+		printk("Changed at %d\n",__LINE__);
 		}
 
 		//dst type
@@ -819,6 +858,7 @@ static int omap_vout_display_set_alpha_and_trans(struct omap_vout_device *vout, 
 		{
 			info.trans_key_type = OMAP_DSS_COLOR_KEY_GFX_DST;
 			info_changed =true;
+		printk("Changed at %d\n",__LINE__);
 		}
 
 		//trans color
@@ -826,6 +866,7 @@ static int omap_vout_display_set_alpha_and_trans(struct omap_vout_device *vout, 
 		{
 			info.trans_key = trans_key;
 			info_changed = true;
+		printk("Changed at %d\n",__LINE__);
 		}
 	}
 	else
@@ -834,6 +875,7 @@ static int omap_vout_display_set_alpha_and_trans(struct omap_vout_device *vout, 
 		{
 			info.trans_enabled = false;
 			info_changed = true;
+		printk("Changed at %d\n",__LINE__);
 		}
 	}
 
@@ -841,18 +883,19 @@ static int omap_vout_display_set_alpha_and_trans(struct omap_vout_device *vout, 
 	{
 		info.alpha_enabled = true;
 		info_changed = true;
+		printk("Changed at %d\n",__LINE__);
 	}
 	if ( !(flags&V4L2_FBUF_FLAG_LOCAL_ALPHA) && info.alpha_enabled )
 	{
 		info.alpha_enabled = false;
 		info_changed = true;
+		printk("Changed at %d\n",__LINE__);
 	}
 
 	if ( info_changed )
 	{
-//		DBG_PRINTK
-		printk("VOUT Trans & Alpha value changed alpah enalbed(%d), trans_enabled(%d), trans_type(%d), transk_color(%u)\n",
-				info.alpha_enabled, info.trans_enabled, info.trans_key_type, info.trans_key);
+		//printk("VOUT Trans & Alpha value changed alpah enalbed(%d), trans_enabled(%d), trans_type(%d), transk_color(%u)\n",
+		//		info.alpha_enabled, info.trans_enabled, info.trans_key_type, info.trans_key);
 		mgr->set_manager_info(mgr, &info);
 	}
 
@@ -1063,6 +1106,8 @@ static int omap_vout_display_to_overlay_2d(struct omap_overlay *ovl, struct vide
 {
 	struct omap_vout_frame_info *fInfo;
 	struct omap_overlay_info ovlInfo;
+        struct omap_vout_device *vout;
+
 	if ( ovl==NULL || frame==NULL )
 	{
 		WARN(1, "Invalid paramter (%p, %p)\n,", ovl, frame);
@@ -1099,6 +1144,11 @@ static int omap_vout_display_to_overlay_2d(struct omap_overlay *ovl, struct vide
 	ovlInfo.vaddr	= NULL;
 	ovlInfo.color_mode	= fInfo->color;
 
+        vout = fInfo->vout;
+	ovlInfo.mirror	= vout->display_info.lcd.mirror;
+        if (vout->display_info.lcd.mirror)
+                rotation ^= dss_rotation_180_degree;
+
 	ovlInfo.rotation	= rotation;
 	ovlInfo.rotation_type	= OMAP_DSS_ROT_TILER;	//always tiler..
 	if ( rotation==OMAP_DSS_ROT_90 || rotation==OMAP_DSS_ROT_270 )
@@ -1113,10 +1163,6 @@ static int omap_vout_display_to_overlay_2d(struct omap_overlay *ovl, struct vide
 		ovlInfo.height	= fInfo->crop.height;
 		ovlInfo.screen_width = fInfo->pix.width;
 	}
-// TI_PATCH_S to support mirroring in Froyo 2011-06-28	
-    // mirror flag is used for mirror effect of front camera
-	//ovlInfo.mirror	= 0;
-// TI_PATCH_E to support mirroring in Froyo 2011-06-28	
 	ovlInfo.pos_x	= pos_x;
 	ovlInfo.pos_y	= pos_y;
 
@@ -1136,14 +1182,17 @@ static int omap_vout_display_to_overlay_2d(struct omap_overlay *ovl, struct vide
 		return -EINVAL;
 	if ( ovl->manager->apply==NULL )
 		return -EINVAL;
-	
+
+#if 0	
 	if(out_width < ovlInfo.width/4 ||
 		out_height < ovlInfo.height/4)
 	{
 		WARN(1,"2d downscaling exceed\n");
 		return -EINVAL;
 	}	
+#endif
 
+        calc_overlay_window_params(vout, &ovlInfo);
 	//set overlay
 	if ( ovl->set_overlay_info(ovl, &ovlInfo) )
 	{
@@ -1578,17 +1627,6 @@ static int omap_vout_display_lcd_top_bottom_to_interlace(struct omap_vout_device
 		return -EINVAL;
 	}
 
-	//configure wb
-	//    numric=>Left, Alphabet=>Right
-	//	(TB)  => rotate 90 in double width => in org width
-	//   0123    EA40                          EA
-	//   4567 => FB51                          40
-	//   ABCD    GC61                          FB
-	//   EFGH    HD73                          51
-	//                                         GC
-	//                                         61
-	//                                         HD
-	//                                         73
 
 	r = omap_vout_display_lcd_wb(frame,
 			wb,
@@ -1846,7 +1884,7 @@ static int  omap_vout_display_lcd(struct omap_vout_device *vout,
 				omap_vout_remap_overlay_manager(lcd,lcd_mgr);
 			}
 			//set trans & alpha
-			omap_vout_display_set_alpha_and_trans(vout, lcd_mgr);
+			//omap_vout_display_set_alpha_and_trans(vout, lcd_mgr);
 		}
 		r =  omap_vout_display_to_overlay_2d(lcd,
 				frame,
@@ -1889,7 +1927,7 @@ static int  omap_vout_display_lcd(struct omap_vout_device *vout,
 					omap_vout_remap_overlay_manager(lcd, lcd_mgr);
 				}
 				//set trans & alpha
-				omap_vout_display_set_alpha_and_trans(vout, lcd_mgr);
+				//omap_vout_display_set_alpha_and_trans(vout, lcd_mgr);
 			}
 
 			//HDMI layer will be used as WB input layer
@@ -2108,7 +2146,7 @@ static int  omap_vout_display_hdmi(struct omap_vout_device *vout,
 	}
 
 	//set alpha & transparent
-	omap_vout_display_set_alpha_and_trans(vout, hdmi_mgr);
+	//omap_vout_display_set_alpha_and_trans(vout, hdmi_mgr);
 
 	//set info
 	if ( out_is_2d )
@@ -2246,13 +2284,6 @@ static void omap_vout_display(struct work_struct *work)
 			return;
 		}
 
-    if( !vout->display_info.lcd.win.w.width ) //taekeun1.kim change
-    {
-      curFrame->state = VIDEOBUF_DONE;
-      wake_up(&curFrame->done);
-      return;
-    }
-
 		//streaming check
 		mutex_lock(&vout->lock);
 		streaming_status = vout->streaming_status;
@@ -2316,6 +2347,7 @@ static void omap_vout_display(struct work_struct *work)
 
 		mutex_unlock(&vout->in_display_operation);
 
+		
 		if(vout->queing_info.displaying_frame == curFrame)
 			return;
 		
@@ -2581,15 +2613,6 @@ static int omap_vout_mmap(struct file *file, struct vm_area_struct *vma)
 
 	for (j = 0; j < vout->input_info.pix.height; j++) {
 		/* map each page of the line */
-	#if 0
-		if (0)
-			printk(KERN_NOTICE
-				"Y buffer %s::%s():%d: vm_start+%d = 0x%lx,"
-				"dma->vmalloc+%d = 0x%lx, w=0x%x\n",
-				__FILE__, __func__, __LINE__,
-				k, vma->vm_start + k, m,
-				(pos + m), p);
-	#endif
 		vma->vm_pgoff =
 			((unsigned long)pos + m) >> PAGE_SHIFT;
 
@@ -2611,15 +2634,6 @@ static int omap_vout_mmap(struct file *file, struct vm_area_struct *vma)
 		/* UV buffer is height / 2*/
 		for (j = 0; j < vout->input_info.pix.height / 2; j++) {
 			/* map each page of the line */
-		#if 0
-			if (0)
-				printk(KERN_NOTICE
-				"UV buffer %s::%s():%d: vm_start+%d = 0x%lx,"
-				"dma->vmalloc+%d = 0x%lx, w=0x%x\n",
-				__FILE__, __func__, __LINE__,
-				k, vma->vm_start + k, m,
-				(pos + m), p);
-		#endif
 			vma->vm_pgoff =
 				((unsigned long)pos + m) >> PAGE_SHIFT;
 
@@ -2951,6 +2965,15 @@ static int vidioc_try_fmt_vid_overlay(struct file *file, void *fh,
 	return ret;
 }
 
+/*
+ * Return true if rotation is 90 or 270
+ */
+static inline int rotate_90_or_270(const struct omap_vout_device *vout)
+{
+        return (vout->display_info.lcd.rotation == dss_rotation_90_degree ||
+                        vout->display_info.lcd.rotation == dss_rotation_270_degree);
+}
+
 /**
  * Change LCD Overlay
  */
@@ -2960,8 +2983,21 @@ static int vidioc_s_fmt_vid_overlay(struct file *file, void *fh,
 	struct omap_vout_device *vout = fh;
 	struct v4l2_window *win = &f->fmt.win;
 	struct v4l2_window *lcd_win = &vout->display_info.lcd.win;
+        __s32   temp;
 
 	mutex_lock(&vout->lock);
+
+        /* flip the x,y coordinates to properly validate the video size against
+        rotated FB coordinates nad to properly center the video when <x,y)
+        is anything orher than (0,0)*/
+        if (rotate_90_or_270(vout)) {
+                temp = win->w.left;
+                win->w.left = win->w.top;
+                win->w.top = temp;
+        }
+
+        omap_vout_new_window(&vout->input_info.crop, &vout->display_info.lcd.win, &vout->buf_info.fbuf, win);
+
 	lcd_win->w	= win->w;	//Only Display Position will be used in cosmo	
 
 	lcd_win->w.top = (lcd_win->w.top/2)*2;
@@ -3021,7 +3057,7 @@ static int vidioc_g_fmt_type_private(struct file *file, void *fh,
 {
 	struct omap_vout_device *vout = fh;
 	struct v4l2_window *win = &f->fmt.win;
-	struct v4l2_window *hdmi_win = &vout->display_info.hdmi.win;
+	struct v4l2_window *hdmi_win = &vout->display_info.lcd.win;
 
 	printk("vidioc_g_fmt_type_private\n");
 	mutex_lock(&vout->lock);
@@ -3112,6 +3148,14 @@ static int vidioc_s_crop(struct file *file, void *fh, struct v4l2_crop *crop)
 	if (ovl->info.field & OMAP_FLAG_IDEV)
 		multiplier = 2;
 
+        if (rotate_90_or_270(vout)) {
+                vout->buf_info.fbuf.fmt.height = timing->x_res;
+                vout->buf_info.fbuf.fmt.width = timing->y_res * multiplier;
+        } else {
+                vout->buf_info.fbuf.fmt.height = timing->y_res * multiplier ;
+                vout->buf_info.fbuf.fmt.width = timing->x_res;
+        }
+
 	if (vout->display_info.lcd.win.w.width <= 0 || vout->display_info.lcd.win.w.height <= 0)
 	{
 		ret = 0;
@@ -3137,11 +3181,9 @@ static int vidioc_queryctrl(struct file *file, void *fh,
 	case V4L2_CID_ROTATE:
 		ret = v4l2_ctrl_query_fill(ctrl, 0, 270, 90, 0);
 		break;
-// TI_PATCH_S to support mirroring in Froyo 2011-06-28	
-    case V4L2_CID_VFLIP:
+	case V4L2_CID_VFLIP:
 		ret = v4l2_ctrl_query_fill(ctrl, 0, 1, 1, 0);
 		break;
-// TI_PATCH_E to support mirroring in Froyo 2011-06-28	
 	case V4L2_CID_TI_DISPC_OVERLAY:
 		/* not settable for now */
 		//only lcd
@@ -3165,24 +3207,11 @@ static int vidioc_g_ctrl(struct file *file, void *fh, struct v4l2_control *ctrl)
 
 	switch (ctrl->id) {
 	case V4L2_CID_ROTATE:
-		dss_rot_to_v4l2_rot( vout->display_info.lcd.rotation, &ctrl->value);
+		ctrl->value = vout->display_info.lcd.control[0].value;
 		break;
-// TI_PATCH_S to support mirroring in Froyo 2011-06-28	
-    	case V4L2_CID_VFLIP:
-    {
-        	struct omap_overlay *ovl;
-		struct omapvideo_info *ovid;
-		
-		ovid = &vout->vid_info;
-		ovl = ovid->overlays.overlays[0];
-
-		mutex_lock(&vout->lock);
-        	ctrl->value  = ovl->info.mirror;
-		mutex_unlock(&vout->lock);
-		break;
-    }
-// TI_PATCH_E to support mirroring in Froyo 2011-06-28	
-    // Edgar --    
+        case V4L2_CID_VFLIP:
+                ctrl->value = vout->display_info.lcd.control[2].value;
+                break;
 	case V4L2_CID_TI_DISPC_OVERLAY:
 		ctrl->value = vout->vid_info.overlays.named.lcd->id;
 		break;
@@ -3226,19 +3255,7 @@ static int vidioc_s_ctrl(struct file *file, void *fh, struct v4l2_control *a)
 	{
 		int rotation = a->value;
 
-//		if (1 == IsVideoTelephonyActivated()) /* baeyoung.park 2011-02-17 */
-//		{
-//20110217 wootaek.lim Rotation For Domestic Cosmo VT START
-//#if defined(CONFIG_MACH_LGE_COSMO_DOMASTIC)
-//			DBG_PRINTK("##########VT Domestic Rotation##########");
-//			rotation = 270;
-//#else
-//			DBG_PRINTK("##########VT Global Rotation##########");
-//			rotation = 90;	
-			//printk("VT activated !!!!!!!!!!\n");
-//#endif
-//20110217 wootaek.lim Rotation For Domestic Cosmo VT END
-//		}        
+   
 
 		mutex_lock(&vout->lock);
 
@@ -3246,29 +3263,36 @@ static int vidioc_s_ctrl(struct file *file, void *fh, struct v4l2_control *a)
 		{
 			mutex_unlock(&vout->lock);
 			return  -EINVAL;
-		}		
+		}
+
+		vout->display_info.lcd.control[0].value = rotation;
 		mutex_unlock(&vout->lock);
 
 		
 
 		break;
 	}
-// TI_PATCH_S to support mirroring in Froyo 2011-06-28	
-    case V4L2_CID_VFLIP:
+        case V4L2_CID_VFLIP:
 	{
-		struct omap_overlay *ovl;
-		struct omapvideo_info *ovid;
-		unsigned int  mirror = a->value;
+                struct omap_overlay *ovl;
+                struct omapvideo_info *ovid;
+                unsigned int  mirror = a->value;
 
-		ovid = &vout->vid_info;
-		ovl = ovid->overlays.overlays[0];
+                ovid = &vout->vid_info;
+                ovl = vout->vid_info.overlays.named.lcd;
 
-		mutex_lock(&vout->lock);
-		ovl->info.mirror = mirror;
-		mutex_unlock(&vout->lock);
-		break;
+                mutex_lock(&vout->lock);
+
+                if (mirror  && vout->input_info.pix.pixelformat == V4L2_PIX_FMT_RGB24) {
+                        mutex_unlock(&vout->lock);
+                        ret = -EINVAL;
+                        break;
+                }
+                //vout->display_info.lcd.mirror = mirror;
+                vout->display_info.lcd.control[2].value = mirror;
+                mutex_unlock(&vout->lock);
+                break;
 	}
-// TI_PATCH_E to support mirroring in Froyo 2011-06-28
 	case ( V4L2_CID_PRIVATE_BASE + 'H'*0x100 + 'e' ) :	//HDMI enable flag
 		mutex_lock(&vout->lock);
 		if ( vout->display_info.hdmi.enable && !a->value && vout->streaming_status==E_STREAMING_ON_GOING )
@@ -3420,6 +3444,7 @@ static int vidioc_qbuf(struct file *file, void *fh,
 	DBG_PRINTK("Buffer %d queue\n", buffer->index);
 	ret = videobuf_qbuf(q, buffer);
 
+	
 	if(ret != 0)
 		goto err;
 
@@ -3649,7 +3674,7 @@ streamon_err:
 	if (ret)
 	{
 		ERR_PRINTK("Stream on failed\n");
-		videobuf_streamoff(q);
+		vidioc_streamoff(file, fh, i);
 	}
 	else
 		DBG_PRINTK("Strea on Success\n");
@@ -3774,10 +3799,15 @@ static int vidioc_s_fbuf(struct file *file, void *fh,
 {
 	struct omapvideo_info *ovid;
 	struct omap_vout_device *vout = fh;
+	struct omap_overlay *ovl;
+	struct omap_overlay_manager_info info;
 	int ret = 0;
+	int enable = 0;
+	enum omap_dss_trans_key_type key_type = OMAP_DSS_COLOR_KEY_GFX_DST;
 
 	mutex_lock(&vout->lock);
 	ovid = &vout->vid_info;
+	ovl = ovid->overlays.named.lcd;
 
 	/* OMAP DSS doesn't support Source and Destination color
 	   key together */
@@ -3787,14 +3817,19 @@ static int vidioc_s_fbuf(struct file *file, void *fh,
 		ret = -EINVAL;
 		goto EXIT;
 	}
-	/* OMAP DSS Doesn't support the Destination color key
-	   and alpha blending together */
-	if ((a->flags & V4L2_FBUF_FLAG_CHROMAKEY) &&
-			(a->flags & V4L2_FBUF_FLAG_LOCAL_ALPHA))
-	{
-		ret = -EINVAL;
-		goto EXIT;
-	}
+        if ((a->flags & V4L2_FBUF_FLAG_SRC_CHROMAKEY)) {
+                vout->buf_info.fbuf.flags |= V4L2_FBUF_FLAG_SRC_CHROMAKEY;
+                key_type =  OMAP_DSS_COLOR_KEY_VID_SRC;
+        } else
+                vout->buf_info.fbuf.flags &= ~V4L2_FBUF_FLAG_SRC_CHROMAKEY;
+
+        if ((a->flags & V4L2_FBUF_FLAG_CHROMAKEY)) {
+                vout->buf_info.fbuf.flags |= V4L2_FBUF_FLAG_CHROMAKEY;
+                key_type =  OMAP_DSS_COLOR_KEY_GFX_DST;
+        } else
+                vout->buf_info.fbuf.flags &=  ~V4L2_FBUF_FLAG_CHROMAKEY;
+
+
 
 	//set attributes
 	if ((a->flags & V4L2_FBUF_FLAG_SRC_CHROMAKEY)) {
@@ -3806,11 +3841,43 @@ static int vidioc_s_fbuf(struct file *file, void *fh,
 		vout->buf_info.fbuf.flags |= V4L2_FBUF_FLAG_CHROMAKEY;
 	} else
 		vout->buf_info.fbuf.flags &=  ~V4L2_FBUF_FLAG_CHROMAKEY;
+
+        if (a->flags & (V4L2_FBUF_FLAG_CHROMAKEY |
+                                V4L2_FBUF_FLAG_SRC_CHROMAKEY))
+                enable = 1;
+        else
+                enable = 0;
+        if (ovl->manager && ovl->manager->get_manager_info &&
+                        ovl->manager->set_manager_info) {
+
+                ovl->manager->get_manager_info(ovl->manager, &info);
+                info.trans_enabled = enable;
+                info.trans_key_type = key_type;
+                info.trans_key = vout->display_info.lcd.win.chromakey;
+
+                if (ovl->manager->set_manager_info(ovl->manager, &info))
+			ret = -EINVAL;
+			goto EXIT;
+        }
+
 	if (a->flags & V4L2_FBUF_FLAG_LOCAL_ALPHA) {
 		vout->buf_info.fbuf.flags |= V4L2_FBUF_FLAG_LOCAL_ALPHA;
+		enable = 1;
 	} else {
 		vout->buf_info.fbuf.flags &= ~V4L2_FBUF_FLAG_LOCAL_ALPHA;
+		enable = 0;
 	}
+
+        if (ovl->manager && ovl->manager->get_manager_info &&
+                        ovl->manager->set_manager_info) {
+                ovl->manager->get_manager_info(ovl->manager, &info);
+                info.alpha_enabled = enable;
+                if (ovl->manager->set_manager_info(ovl->manager, &info)) {
+			ret = -EINVAL;
+			goto EXIT;
+		}
+        }
+
 EXIT:
 	mutex_unlock(&vout->lock);
 	return ret;
@@ -3820,12 +3887,24 @@ static int vidioc_g_fbuf(struct file *file, void *fh,
 		struct v4l2_framebuffer *a)
 {
 	struct omap_vout_device *vout = fh;
+	struct omapvideo_info *ovid;
+	struct omap_overlay *ovl;
+	struct omap_overlay_manager_info info;
 
 	mutex_lock(&vout->lock);
 
 	a->flags = vout->buf_info.fbuf.flags;
 	a->capability = V4L2_FBUF_CAP_LOCAL_ALPHA | V4L2_FBUF_CAP_CHROMAKEY
 		| V4L2_FBUF_CAP_SRC_CHROMAKEY;
+
+	ovid = &vout->vid_info;
+	ovl = ovid->overlays.named.lcd;
+
+        if (ovl->manager && ovl->manager->get_manager_info) {
+                ovl->manager->get_manager_info(ovl->manager, &info);
+                if (info.alpha_enabled)
+                        a->flags |= V4L2_FBUF_FLAG_LOCAL_ALPHA;
+        }
 
 	mutex_unlock(&vout->lock);
 
@@ -3884,6 +3963,7 @@ static int __init omap_vout_setup_video_data(struct omap_vout_device *vout)
 {
 	struct video_device *vfd;
 	struct v4l2_pix_format *pix;
+        struct v4l2_control *control;
 
 	/* set the default pix */
 	pix = &vout->input_info.pix;
@@ -3913,6 +3993,19 @@ static int __init omap_vout_setup_video_data(struct omap_vout_device *vout)
 
 	omap_vout_new_format(pix, &vout->buf_info.fbuf, &vout->input_info.crop, &vout->display_info.lcd.win);
 
+
+        /*Initialize the control variables for
+          rotation, flipping and background color. */
+        control = vout->display_info.lcd.control;
+        control[0].id = V4L2_CID_ROTATE;
+        control[0].value = 0;
+        vout->display_info.lcd.rotation = 0;
+        vout->display_info.lcd.mirror = 0;
+        vout->display_info.lcd.control[2].id = V4L2_CID_HFLIP;
+        vout->display_info.lcd.control[2].value = 0;
+
+        control[1].id = V4L2_CID_BG_COLOR;
+        control[1].value = 0;
 
 	/* initialize the video_device struct */
 	vfd = vout->vfd = video_device_alloc();
@@ -4176,13 +4269,13 @@ static int __init omap_vout_probe(struct platform_device *pdev)
 					OMAP_DSS_DISPLAY_CAP_MANUAL_UPDATE) {
 #ifdef CONFIG_FB_OMAP2_FORCE_AUTO_UPDATE
 				if (dssdrv->enable_te)
-					dssdrv->enable_te(def_display, 1);
+					dssdrv->enable_te(def_display, 0);
 				if (dssdrv->set_update_mode)
 					dssdrv->set_update_mode(def_display,
 							OMAP_DSS_UPDATE_AUTO);
 #else	/* MANUAL_UPDATE */
 				if (dssdrv->enable_te)
-					dssdrv->enable_te(def_display, 1);
+					dssdrv->enable_te(def_display, 0);
 				if (dssdrv->set_update_mode)
 					dssdrv->set_update_mode(def_display,
 							OMAP_DSS_UPDATE_MANUAL);

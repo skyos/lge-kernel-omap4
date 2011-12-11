@@ -8,6 +8,14 @@
  * kind, whether express or implied.
  */
 
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//
+// Important Notice
+//		In LGE Cosmo, this file is replaced by omap_vout_cosmo.h
+//		If there is important patches, apply patches to omap_vout_cosmo.h
+//
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 #ifndef OMAP_VOUTDEF_H
 #define OMAP_VOUTDEF_H
 
@@ -95,6 +103,11 @@ struct omap_vout_device {
 	struct omap2video_device *vid_dev;
 	int vid;
 	int opened;
+
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
+	u32 rsz_configured;
+	u32 use_isp_rsz_for_downscale;
+#endif
 
 	/* we don't allow to change image fmt/size once buffer has
 	 * been allocated

@@ -37,6 +37,13 @@
 #endif
 #define MAX_MANAGERS	3
 
+#define OMAP_VOUT_MAX_BUFFERS    6
+/*
+ * Currently VRFB BUF context and Data Buffers are mapped 1:1
+ */
+#define OMAP_VOUT_MAX_VRFB_CTXT        OMAP_VOUT_MAX_BUFFERS
+
+
 /* TI Private V4L2 ioctls */
 #define V4L2_CID_TI_DISPC_OVERLAY	(V4L2_CID_PRIVATE_BASE + 0)
 
@@ -163,6 +170,8 @@ enum STREAMING_STATUS {
 	E_STREAMING_NO_DRAW
 };
 
+#define MAX_CID         3
+
 /* per-device data structure */
 struct omap_vout_device {
 
@@ -220,6 +229,7 @@ struct omap_vout_device {
 		enum v4l2_frame_pack_order	s3d_pack_order;
 		struct {
 			struct v4l2_window	win;
+			struct v4l2_control control[MAX_CID];
 			enum dss_rotation	rotation;
 			bool 				mirror;
 			struct omap_vout_vram_buffer *wb_buffer[2];	//for ping-pong write

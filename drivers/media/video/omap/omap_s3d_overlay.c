@@ -265,14 +265,13 @@ static int v4l2_rot_to_dss_rot(const unsigned int v4l2_rotation,
 {
 	switch (v4l2_rotation) {
 	case 90:
-		//*rotation = OMAP_DSS_ROT_270;
 		*rotation = OMAP_DSS_ROT_90;
 		break;
 	case 180:
 		*rotation = OMAP_DSS_ROT_180;
 		break;
 	case 270:
-		*rotation = OMAP_DSS_ROT_90;
+		*rotation = OMAP_DSS_ROT_270;
 		break;
 	case 0:
 		*rotation = OMAP_DSS_ROT_0;
@@ -387,10 +386,21 @@ static void set_default_window(struct s3d_ovl_device *dev,
 				struct v4l2_window *win)
 {
 	struct omap_video_timings *timings = &dev->cur_disp->panel.timings;
-	win->w.width = timings->x_res;
-	win->w.height = timings->y_res;
+
+	dev->fbuf.fmt.width = timings->x_res;
+	dev->fbuf.fmt.height = timings->y_res;
+
 	win->w.top = 0;
 	win->w.left = 0;
+	win->w.width = timings->x_res;
+	win->w.height = timings->y_res;
+
+	if (dev->cur_disp->panel.s3d_info.type == S3D_DISP_OVERUNDER) {
+		win->w.height = (win->w.height -
+			dev->cur_disp->panel.s3d_info.gap) / 2;
+	} else if (dev->cur_disp->panel.s3d_info.type == S3D_DISP_SIDEBYSIDE)
+		win->w.width = (win->w.width -
+			dev->cur_disp->panel.s3d_info.gap) / 2;
 }
 
 static int calculate_offset(const struct v4l2_rect *crop,
@@ -669,10 +679,8 @@ static int change_display(struct s3d_ovl_device *dev,
 		return -EINVAL;
 	}
 
-	if (dev->streaming) {
-		S3DERR("cannot change display while streaming!\n");
-		return -EBUSY;
-	}
+	if (dev->cur_disp == display)
+		return 0;
 
 	mgr = display->manager;
 	if (!mgr) {
@@ -693,7 +701,9 @@ static int change_display(struct s3d_ovl_device *dev,
 	}
 
 	if (mgr->device != display) {
+		omapdss_display_disable(display);
 		if (mgr->device) {
+			omapdss_display_disable(mgr->device);
 			r = mgr->unset_device(mgr);
 			if (r || mgr->device) {
 				S3DERR("failed to unbind display from manager\n");
@@ -725,6 +735,8 @@ static int change_display(struct s3d_ovl_device *dev,
 
 	omap_dss_put_device(dev->cur_disp);
 	dev->cur_disp = display;
+	set_default_window(dev, &dev->win);
+
 	return 0;
 }
 
@@ -745,13 +757,14 @@ static inline int bind_ovl2display(struct s3d_ovl_device *dev,
 		return r;
 	}
 
-	r = ovl->dssovl->unset_manager(ovl->dssovl);
-	if (r && mgr != NULL) {
-		S3DERR("couldn't unbind manager from ovl\n");
-		return r;
+	if (mgr) {
+		r = ovl->dssovl->unset_manager(ovl->dssovl);
+		if (r) {
+			S3DERR("couldn't unbind manager from ovl\n");
+			return r;
+		}
 	}
-	if (mgr)
-		mgr->apply(mgr);
+
 	r = ovl->dssovl->set_manager(ovl->dssovl, display->manager);
 	if (r) {
 		S3DERR("couldn't bind to manager\n");
@@ -941,7 +954,13 @@ static int fill_dst(struct s3d_ovl_device *dev,
 			unsigned int dst_width,
 			unsigned int dst_height)
 {
-	unsigned int pos_x = 0, pos_y = 0;
+	struct omap_video_timings *timings = &dev->cur_disp->panel.timings;
+	unsigned int pos_x = dev->win.w.left, pos_y = dev->win.w.top;
+
+	info->r_pos_x = pos_x;
+	info->r_pos_y = pos_y;
+	info->l_pos_x = pos_x;
+	info->l_pos_y = pos_y;
 
 	switch (disp_info->type) {
 	case S3D_DISP_NONE:
@@ -967,15 +986,15 @@ static int fill_dst(struct s3d_ovl_device *dev,
 		break;
 	case S3D_DISP_OVERUNDER:
 		info->dst_w = dst_width;
-		info->dst_h = (dst_height - disp_info->gap) / 2;
-		pos_y = (dst_height + disp_info->gap) / 2;
+        info->dst_h = dst_height;
+		pos_y += (timings->y_res + disp_info->gap) / 2;
 		info->disp_ovls = 2;
 		info->a_view_per_ovl = true;
 		break;
 	case S3D_DISP_SIDEBYSIDE:
-		info->dst_w = (dst_width - disp_info->gap) / 2;
+        info->dst_w = dst_width;
 		info->dst_h = dst_height;
-		pos_x = (dst_width + disp_info->gap) / 2;
+		pos_x += (timings->x_res + disp_info->gap) / 2;
 		info->disp_ovls = 2;
 		info->a_view_per_ovl = true;
 		break;
@@ -1032,6 +1051,10 @@ static int fill_formatter_config(struct s3d_ovl_device *dev,
 	info->disp_h = dst_height;
 	info->in_rotation = dev->rotation;
 	info->out_rotation = 0;
+	info->r_pos_x = dev->win.w.left;
+	info->r_pos_y = dev->win.w.top;
+	info->l_pos_x = dev->win.w.left;
+	info->l_pos_y = dev->win.w.top;
 
 	/*If the input matches what the display expects just feed it, no
 	 * special processing is needed */
@@ -1226,6 +1249,8 @@ static int init_overlay(struct s3d_ovl_device *dev, struct s3d_overlay *ovl)
 		ovl->src.h = dev->fter_config.disp_h;
 		ovl->dst.w = ovl->src.w;
 		ovl->dst.h = ovl->src.h;
+		ovl->dst.x = dev->fter_config.r_pos_x;
+		ovl->dst.y = dev->fter_config.r_pos_y;
 		ovl->state = OVL_ST_FETCH_ALL;
 	}
 
@@ -1286,12 +1311,9 @@ static int enable_overlays(const struct s3d_ovl_device *dev,
 	return r;
 }
 
-//static int conf_overlay_info(const struct s3d_ovl_device *dev,
-//				struct s3d_overlay *ovl,
-//				const unsigned int buf_idx)
-static int conf_overlay_info(struct s3d_ovl_device *dev,
+static int conf_overlay_info(const struct s3d_ovl_device *dev,
 				struct s3d_overlay *ovl,
-				const unsigned int buf_id)
+				const unsigned int buf_idx)
 {
 	int r;
 	struct omap_overlay *dssovl;
@@ -1300,8 +1322,6 @@ static int conf_overlay_info(struct s3d_ovl_device *dev,
 	unsigned long uv_addr;
 	enum s3d_disp_view view;
 
-    unsigned int ovl_buf_id = buf_id;
-    unsigned int wb_buf_id;
 	dssovl = ovl->dssovl;
 
 	if (((ovl->dssovl->caps & OMAP_DSS_OVL_CAP_SCALE) == 0) &&
@@ -1310,22 +1330,8 @@ static int conf_overlay_info(struct s3d_ovl_device *dev,
 		return -EINVAL;
 	}
 
-	if (dev->fter_config.use_wb && ovl->role ==  OVL_ROLE_DISP) {
-		ovl_buf_id = dev->wb_buf_disp_idx;
-		dev->wb_buf_disp_idx++;
-		if(dev->wb_buf_disp_idx >=dev->out_q.n_alloc)
-			dev->wb_buf_disp_idx = 0;
-		//S3DERR("WB for disp: %d\n",ovl_buf_id);
-	}
-
-	if (ovl->role ==  OVL_ROLE_WB) {
-		wb_buf_id = dev->wb_buf_proc_idx;
-		//S3DERR("WB proc - s:%d wb:%d\n",ovl_buf_id, wb_buf_id);
-	}
-
 	view = get_next_view(dev, ovl);
-	//get_view_address(ovl->queue, view, buf_idx, &addr, &uv_addr);
-	get_view_address(ovl->queue, view, ovl_buf_id, &addr, &uv_addr);
+	get_view_address(ovl->queue, view, buf_idx, &addr, &uv_addr);
 
 	S3DINFO("conf - role:%d, addr: 0x%lx, uv_addr:0x%lx\n",
 		ovl->role, addr, uv_addr);
@@ -1344,7 +1350,14 @@ static int conf_overlay_info(struct s3d_ovl_device *dev,
 	info.width = ovl->src.w;
 	info.height = ovl->src.h;
 	info.color_mode = ovl->queue->color_mode;
+	/*
+	 * DSS mirroring is left-to-right, while ovl->vflip is top-down,
+	 * so adjust rotation by 180 degrees
+	 */
 	info.mirror = ovl->vflip;
+	if (ovl->vflip)
+		info.rotation ^= OMAP_DSS_ROT_180;
+
 	info.pos_x = ovl->dst.x;
 	info.pos_y = ovl->dst.y;
 	info.out_width = ovl->dst.w;
@@ -1378,8 +1391,7 @@ static int conf_overlay_info(struct s3d_ovl_device *dev,
 		}
 
 		wb->get_wb_info(wb, &wb_info);
-		//get_view_address(ovl->wb_queue, view, wb_buf_id, &wb_addr, &wb_uv_addr);
-		get_view_address(ovl->wb_queue, view, wb_buf_id, &wb_addr, &wb_uv_addr);
+		get_view_address(ovl->wb_queue, view, buf_idx, &wb_addr, &wb_uv_addr);
 		S3DINFO("conf - wb_addr: 0x%lx uv:0x%lx\n", wb_addr, wb_uv_addr);
 		wb_info.enabled = true;
 		wb_info.capturemode = OMAP_WB_CAPTURE_ALL;
@@ -1541,8 +1553,6 @@ static int allocate_resources(struct s3d_ovl_device *dev)
 	if (dev->fter_config.use_wb) {
 		unsigned int disp_w;
 		unsigned int disp_h;
-		int wb_n_alloc = 2;
-
 		if (dev->fter_config.out_rotation == 90 ||
 			dev->fter_config.out_rotation == 270) {
 			disp_w = dev->fter_config.disp_h;
@@ -1562,13 +1572,10 @@ static int allocate_resources(struct s3d_ovl_device *dev)
 			S3DWARN("internal buffers exist\n");
 			free_buffers(&dev->out_q);
 		}
-		//if (alloc_buffers(dev, &dev->out_q, &dev->in_q.n_alloc)) {
-		if (alloc_buffers(dev, &dev->out_q, &wb_n_alloc)) {
+		if (alloc_buffers(dev, &dev->out_q, &dev->in_q.n_alloc)) {
 			S3DERR("failed to allocate internal buffers\n");
 			return -ENOMEM;
 		}
-		dev->wb_buf_proc_idx = 0;
-		dev->wb_buf_disp_idx = 0;
 	}
 
 	num_ovls = dev->fter_config.wb_ovls + dev->fter_config.disp_ovls;
@@ -1629,20 +1636,27 @@ static int change_s3d_mode(struct s3d_ovl_device *dev,
 
 	disp = dev->cur_disp;
 	enable_s3d = (mode == V4L2_S3D_MODE_ON) && !dev->override_s3d_disp;
-
-#if 0
-	//disable ti's barrier control
-	if (disp && disp->driver && disp->driver->enable_s3d) {
-		r = disp->driver->enable_s3d(dev->cur_disp, enable_s3d);
+	if (!disp) {
+		WARN_ON(1);
+		S3DERR("NULL display pointer!\n");
+		return -EFAULT;
+	}
+	if (disp->driver && disp->driver->enable_s3d) {
+		struct omap_video_timings timings = disp->panel.timings;
+		r = disp->driver->enable_s3d(disp, enable_s3d);
 		if (enable_s3d && r) {
 			S3DWARN("failed to enable S3D display\n");
 			/*fallback to anaglyph mode*/
 			mode = dev->s3d_mode = V4L2_S3D_MODE_ANAGLYPH;
 		}
+		/* If display resolution has changed after 3D switching
+		   reset the window setting */
+		if (timings.x_res != disp->panel.timings.x_res ||
+			timings.y_res != disp->panel.timings.y_res)
+			set_default_window(dev, &dev->win);
 	}
-#endif
 
-	if(disp->panel.s3d_info.type == S3D_DISP_NONE &&
+	if (disp->panel.s3d_info.type == S3D_DISP_NONE &&
 		mode == V4L2_S3D_MODE_ON &&
 		!dev->override_s3d_disp)
 		mode = dev->s3d_mode = V4L2_S3D_MODE_ANAGLYPH;
@@ -1654,8 +1668,13 @@ static int change_s3d_mode(struct s3d_ovl_device *dev,
 			mgr->get_manager_info(mgr, &info);
 			info.alpha_enabled = false;
 			r = mgr->set_manager_info(mgr, &info);
-			if (r)
-				S3DERR("failed to set alpha blender\n");
+			if (r) {
+				/* Alpha blender is always enabled in OMAP4 manager
+				driver so just give warning here but do not return
+				error */
+				S3DWARN("failed to disable alpha blender\n");
+				r = 0;
+			}
 		} else {
 			S3DERR("invalid manager");
 			r = -EINVAL;
@@ -1669,15 +1688,9 @@ static int wb_process_buffer(struct s3d_ovl_device *dev,
 				struct videobuf_buffer *buf)
 {
 	int r;
-
-	dev->wb_buf_proc_idx++;
-	if(dev->wb_buf_proc_idx >= dev->out_q.n_alloc)
-		dev->wb_buf_proc_idx = 0;
-
 	dev->fter_info.pend_wb_passes = dev->fter_config.wb_passes;
 	dev->fter_info.wb_cur_buf = buf;
 	dev->fter_info.wb_state = WB_BUSY;
-	dev->wb_avoid_kick = true; 
 	S3DINFO("WB process buffer:%d\n", buf->i);
 	r = conf_overlays(dev, &dev->overlays, buf->i, OVL_ROLE_WB);
 	if (r) {
@@ -1720,7 +1733,6 @@ static int activate_resources(struct s3d_ovl_device *dev)
 		INIT_LIST_HEAD(&dev->videobuf_q);
 		dev->next_buf = dev->cur_buf = NULL;
 		dev->streaming = true;
-		dev->wb_start_kicking = false; 
 		return wb_kick(dev);
 	}
 
@@ -1766,8 +1778,6 @@ static void s3d_wb_isr(void *arg, u32 irqstatus)
 		S3DINFO("wb done, idx:%d\n", info->wb_cur_buf->i);
 		/*This is the first buffer processed, we can now display it*/
 		if (dev->cur_buf == NULL) {
-			dev->wb_start_kicking = true;
-			dev->wb_buf_disp_idx = dev->wb_buf_proc_idx;
 			dev->next_buf = dev->cur_buf = info->wb_cur_buf;
 			info->wb_cur_buf->state = VIDEOBUF_ACTIVE;
 			conf_overlays(dev, &dev->overlays, info->wb_cur_buf->i,
@@ -1779,8 +1789,7 @@ static void s3d_wb_isr(void *arg, u32 irqstatus)
 			list_add_tail(&info->wb_cur_buf->queue,
 					&dev->videobuf_q);
 		}
-		//wb_kick(dev);
-		dev->wb_avoid_kick = false;
+		wb_kick(dev);
 	} else {
 		S3DINFO("wb pending:%d, idx:%d\n",
 			dev->fter_info.pend_wb_passes,
@@ -1803,6 +1812,10 @@ static void s3d_overlay_isr(void *arg, u32 irqstatus)
 	if (!dev->streaming)
 		return;
 
+	/* Filter erroneous VSYNC handling */
+	//if (!dssdev_manually_updated(dev->cur_disp) && dispc_is_vsync_fake())
+	//	return;
+
 	spin_lock_irqsave(&dev->vbq_lock, flags);
 	if (dev->cur_buf == NULL) {
 		spin_unlock_irqrestore(&dev->vbq_lock, flags);
@@ -1818,9 +1831,6 @@ static void s3d_overlay_isr(void *arg, u32 irqstatus)
 		wake_up_interruptible(&dev->cur_buf->done);
 		dev->cur_buf = dev->next_buf;
 	}
-
-	if(dev->fter_config.use_wb && dev->wb_start_kicking && !dev->wb_avoid_kick)
-		wb_kick(dev);
 
 	if (dev->cur_disp->panel.s3d_info.type == S3D_DISP_FRAME_SEQ)
 		toggle_driver_view(dev);
@@ -2057,7 +2067,6 @@ static void buffer_queue(struct videobuf_queue *q, struct videobuf_buffer *vb)
 	/*When we not streaming yet, add them to both queues.
 	 *During stream on, it will be determined which queue to use*/
 	if (!dev->streaming) {
-		S3DINFO("WB 1queue:%d\n", vb->i); 
 		vb->state = VIDEOBUF_QUEUED;
 		list_add_tail(&wb_buf->queue, &dev->fter_info.wb_videobuf_q);
 		list_add_tail(&vb->queue, &dev->videobuf_q);
@@ -2808,6 +2817,8 @@ static int vidioc_s_ctrl(struct file *file, void *fh, struct v4l2_control *a)
 			int r;
 			if (dev->streaming)
 				return -EBUSY;
+			if (dev->cur_disp_idx == a->value)
+				return 0;
 			mutex_lock(&dev->lock);
 			r = change_display(dev, get_display(a->value));
 			if (!r)
@@ -2829,10 +2840,12 @@ static int vidioc_s_ctrl(struct file *file, void *fh, struct v4l2_control *a)
 		}
 	case V4L2_CID_PRIVATE_S3D_MODE:
 		{
+			if (dev->streaming)
+				return -EBUSY;
 			if (a->value < 0 || a->value >= V4L2_S3D_MODE_MAX)
 				return -EINVAL;
 			mutex_lock(&dev->lock);
-			if (dev->streaming && change_s3d_mode(dev, a->value)) {
+			if (change_s3d_mode(dev, a->value)) {
 				mutex_unlock(&dev->lock);
 				return -EINVAL;
 			}
@@ -2858,7 +2871,7 @@ static int vidioc_qbuf(struct file *file, void *fh, struct v4l2_buffer *buffer)
 	struct s3d_ovl_device *dev = fh;
 	struct videobuf_queue *q = &dev->vbq;
 	int r = 0;
-	bool push_buf = false;
+	bool buf_queue_empty = false;
 
 	mutex_lock(&dev->lock);
 	if ((V4L2_BUF_TYPE_VIDEO_OUTPUT != buffer->type) ||
@@ -2869,9 +2882,8 @@ static int vidioc_qbuf(struct file *file, void *fh, struct v4l2_buffer *buffer)
 	}
 
 	if (dev->streaming && dssdev_manually_updated(dev->cur_disp) &&
-		list_empty(&dev->videobuf_q) &&
-		(dev->cur_buf == dev->next_buf))
-		push_buf = true;
+		list_empty(&dev->videobuf_q))
+		buf_queue_empty = true;
 
 	r = videobuf_qbuf(q, buffer);
 	if (r)
@@ -2882,7 +2894,8 @@ static int vidioc_qbuf(struct file *file, void *fh, struct v4l2_buffer *buffer)
 		goto exit;
 	}
 
-	if (push_buf) {
+	if (buf_queue_empty && !list_empty(&dev->videobuf_q) &&
+		(dev->cur_buf == dev->next_buf)) {
 		dev->next_buf = list_entry(dev->videobuf_q.next,
 					struct videobuf_buffer, queue);
 		list_del(&dev->next_buf->queue);
@@ -2954,7 +2967,7 @@ static int vidioc_streamon(struct file *file, void *fh, enum v4l2_buf_type i)
 
 	/*TODO: if the panel resolution changes after going to 3D
 	   what to do we do with the current window setting*/
-	//set_default_window(dev, &dev->win); 
+	set_default_window(dev, &dev->win);
 
 	r = allocate_resources(dev);
 	if (r) {
