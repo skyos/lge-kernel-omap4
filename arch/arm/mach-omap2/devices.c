@@ -355,12 +355,18 @@ static struct platform_device omap_abe_dai = {
 	.id	= -1,
 };
 
+static struct platform_device omap_abe_vxrec = {
+	.name	= "omap-abe-vxrec-dai",
+	.id	= -1,
+};
+
 static inline void omap_init_abe(void)
 {
 	platform_device_register(&codec_dmic0);
 	platform_device_register(&codec_dmic1);
 	platform_device_register(&codec_dmic2);
 	platform_device_register(&omap_abe_dai);
+	platform_device_register(&omap_abe_vxrec);
 }
 #else
 static inline void omap_init_abe(void) {}
@@ -501,10 +507,10 @@ static int omap_mcspi_init(struct omap_hwmod *oh, void *user)
 		pdata->dma_mode		= 0;
 		pdata->force_cs_mode		= 1;
 		pdata->fifo_depth			= 0;
-#else // LGE_FW_TDMB
+#else
 		pdata->num_cs = 4;
 		pdata->force_cs_mode = 1;
-#endif // LGE_FW_TDMB
+#endif
 	
 		break;
 		
@@ -949,19 +955,17 @@ void __init omap_display_init(struct omap_dss_board_info *board_data)
 	defined(CONFIG_VIDEO_OMAP2_VOUT_MODULE)
 #if defined(CONFIG_FB_OMAP2) || defined(CONFIG_FB_OMAP2_MODULE)
 #ifdef CONFIG_ARCH_OMAP4
-static struct resource omap_vout_resource[4 - CONFIG_FB_OMAP2_NUM_FBS] = 
+static struct resource omap_vout_resource[4 - CONFIG_FB_OMAP2_NUM_FBS] = {
 #else
-static struct resource omap_vout_resource[3 - CONFIG_FB_OMAP2_NUM_FBS] =
+static struct resource omap_vout_resource[3 - CONFIG_FB_OMAP2_NUM_FBS] = {
 #endif
-{
 };
 #else
 #ifdef CONFIG_ARCH_OMAP4
-static struct resource omap_vout_resource[3] = 
+static struct resource omap_vout_resource[3] = {
 #else
-static struct resource omap_vout_resource[2] = 
+static struct resource omap_vout_resource[2] = {
 #endif
-}
 };
 #endif
 

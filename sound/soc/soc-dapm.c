@@ -29,7 +29,7 @@
  *    o Support for reduced codec bias currents.
  */
 
-#define DEBUG
+#undef DEBUG
 
 #include <linux/module.h>
 #include <linux/moduleparam.h>
@@ -210,11 +210,9 @@ static int scenario_find_playback_paths (struct snd_soc_dapm_context *dapm,
 	list_for_each(lp, &source->sinks) {
 		path = list_entry(lp, struct snd_soc_dapm_path, list_source);
 
-		if( path == 0 ) continue;
-		
-//		dev_dbg(dapm->dev," %d:try source %s path %s to %s len %d connect %d\n",
-//				hops, source->name, path->name, path->sink->name,
-//				path->length, path->connect);
+		dev_dbg(dapm->dev," %d:try source %s path %s to %s len %d connect %d\n",
+				hops, source->name, path->name, path->sink->name,
+				path->length, path->connect);
 
 		/* been here before ? */
 		if (path->length && path->length <= hops)
@@ -258,11 +256,9 @@ static int scenario_find_capture_paths (struct snd_soc_dapm_context *dapm,
 	list_for_each(lp, &sink->sources) {
 		path = list_entry(lp, struct snd_soc_dapm_path, list_sink);
 
-		if( path == 0 ) continue;
-
-//		dev_dbg(dapm->dev," %d:try sink %s path %s to %s len %d connect %d\n",
-//				hops, sink->name, path->name, path->source->name,
-//				path->length, path->connect);
+		dev_dbg(dapm->dev," %d:try sink %s path %s to %s len %d connect %d\n",
+				hops, sink->name, path->name, path->source->name,
+				path->length, path->connect);
 
 		/* been here before ? */
 		if (path->length && path->length <= hops)
@@ -570,8 +566,8 @@ static int dapm_new_mixer(struct snd_soc_dapm_context *dapm,
 {
 	int i, ret = 0;
 	size_t name_len;
-	struct snd_soc_dapm_path *path = 0;
-	struct snd_card *card = 0;
+	struct snd_soc_dapm_path *path;
+	struct snd_card *card;
 
 	if (dapm->codec)
 		card = dapm->codec->snd_card;
@@ -639,8 +635,8 @@ static int dapm_new_mux(struct snd_soc_dapm_context *dapm,
 	struct snd_soc_dapm_widget *w)
 {
 	struct snd_soc_dapm_path *path = NULL;
-	struct snd_kcontrol *kcontrol = 0;
-	struct snd_card *card = 0;
+	struct snd_kcontrol *kcontrol;
+	struct snd_card *card;
 	int ret = 0;
 
 	if (dapm->codec)
@@ -710,8 +706,8 @@ static int snd_soc_dapm_suspend_check(struct snd_soc_dapm_widget *widget)
 	switch (level) {
 	case SNDRV_CTL_POWER_D3hot:
 	case SNDRV_CTL_POWER_D3cold:
-//		if (widget->ignore_suspend)
-//			pr_debug("%s ignoring suspend\n", widget->name);
+		if (widget->ignore_suspend)
+			pr_debug("%s ignoring suspend\n", widget->name);
 		return widget->ignore_suspend;
 	default:
 		return 1;
