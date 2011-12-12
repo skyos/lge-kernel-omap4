@@ -97,7 +97,7 @@ int lge_is_mark_cp_crash()
 }
 
 
-void lge_user_reset()
+void lge_user_reset(void)
 {
 	char nvdata_user_reset_buffer[2] = {LGE_NVDATA_DYNAMIC_RESET_CAUSE_VAL_USER_RESET, 0x00 };
 	
@@ -105,7 +105,7 @@ void lge_user_reset()
 
 }
 
-static void lge_dump_kernel_log()
+static void lge_dump_kernel_log(void)
 {
 	extern int log_buf_copy(char *dest, int idx, int len);
 	char log_buf[1024];
@@ -140,7 +140,7 @@ static void lge_dump_kernel_log()
 	set_fs(oldfs);
 }
 
-static int lge_dump_android_log()
+static int lge_dump_android_log(void)
 {
 	static char * dontpanic_path = "/system/bin/logcat";
 	char *argv[] = { dontpanic_path,"-t","1000" ">","/data/panic_an.txt",NULL };

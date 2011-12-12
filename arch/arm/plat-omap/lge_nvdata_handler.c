@@ -25,11 +25,11 @@
 
 int lge_dynamic_nvdata_raw_read(int offset, char* buf, int size)
 {
-	if(size == 0) return 0;
-
 	int h_file = 0;
 	int ret = 0;
 	mm_segment_t oldfs = get_fs();
+
+	if(size == 0) return 0;
 	set_fs(KERNEL_DS);
 	h_file = sys_open(LGE_NVDATA_DYNAMIC_PARTITION, O_RDWR,0);
 
@@ -60,12 +60,11 @@ int lge_dynamic_nvdata_raw_read(int offset, char* buf, int size)
 int lge_dynamic_nvdata_raw_write(int offset, char* buf, int size)
 
 {
-	if(size == 0) return 0;
-
 	int h_file = 0;
 	int ret = 0;
-
 	mm_segment_t oldfs = get_fs();
+
+	if(size == 0) return 0;
 	set_fs(KERNEL_DS);
 	h_file = sys_open(LGE_NVDATA_DYNAMIC_PARTITION, O_RDWR,0);
 
@@ -113,11 +112,11 @@ void lge_clean_dynamic_nvdata_partition()
 // ------------------------- For Static NV data -----------------------------------------------------//
 int lge_static_nvdata_raw_read(int offset, char* buf, int size)
 {
-	if(size == 0) return 0;
-
 	int h_file = 0;
 	int ret = 0;
 	mm_segment_t oldfs = get_fs();
+
+	if(size == 0) return 0;
 	set_fs(KERNEL_DS);
 	h_file = sys_open(LGE_NVDATA_STATIC_PARTITION, O_RDWR,0);
 
@@ -148,11 +147,11 @@ int lge_static_nvdata_raw_read(int offset, char* buf, int size)
 int lge_static_nvdata_raw_write(int offset, char* buf, int size)
 
 {
-	if(size == 0) return 0;
-
 	int h_file = 0;
 	int ret = 0;
 	mm_segment_t oldfs = get_fs();
+
+	if(size == 0) return 0;
 	set_fs(KERNEL_DS);
 	h_file = sys_open(LGE_NVDATA_STATIC_PARTITION, O_RDWR,0);
 
