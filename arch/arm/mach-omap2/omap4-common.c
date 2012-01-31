@@ -32,6 +32,7 @@
 
 #ifdef CONFIG_CACHE_L2X0
 #define L2X0_POR_OFFSET_VALUE     0x7
+#define L2X0_POR_OFFSET_MASK    0x1f
 static void __iomem *l2cache_base;
 #endif
 
