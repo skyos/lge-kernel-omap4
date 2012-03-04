@@ -14,7 +14,7 @@
  *
  * This program is distributed in the hope that it will be useful, but
  * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -83,6 +83,5 @@
 #define ABE_DEBUG_HWFILE                0
 /* low-level log files */
 #define ABE_DEBUG_LL_LOG                0
-#define ABE_DEBUG (ABE_DEBUG_CHECKERS | ABE_DEBUG_HWFILE | ABE_DEBUG_LL_LOG)
-#endif /* _ABE_MAIN_H_ */
 
+#endif				/* _ABE_MAIN_H_ */

@@ -14,7 +14,7 @@
  *
  * This program is distributed in the hope that it will be useful, but
  * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -118,7 +118,7 @@
 #define CS_M1 0xFFFF
 #define CL_M1 0xFFFFFFFFL
 /*
-	Mixer ID 	 Input port ID	 Comments
+	Mixer ID	 Input port ID		Comments
 	DL1_MIXER	 0 MMDL path
 	 1 MMUL2 path
 	 2 VXDL path
@@ -247,7 +247,7 @@
 #define MUTE_GAIN -12000L
 #define GAIN_TOOLOW -13000L
 #define GAIN_MUTE MUTE_GAIN
-#define RAMP_MINLENGTH 3L
+#define RAMP_MINLENGTH 0L
 /* ramp_t is in milli- seconds */
 #define RAMP_0MS 0L
 #define RAMP_1MS 1L

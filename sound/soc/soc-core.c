@@ -57,8 +57,6 @@ static int snd_soc_register_card(struct snd_soc_card *card);
 static int snd_soc_unregister_card(struct snd_soc_card *card);
 static int soc_new_pcm(struct snd_soc_pcm_runtime *rtd, int num);
 
-static int s_bsuspend = 0;
-static int s_partial_suspend = 0;	
 /*
  * This is a timeout to do a DAPM powerdown after a stream is closed().
  * It can be used to eliminate pops between different playback streams, e.g.
@@ -167,28 +165,7 @@ static ssize_t codec_reg_show(struct device *dev,
 	return soc_codec_reg_show(rtd->codec, buf);
 }
 
-#if defined(CONFIG_MACH_LGE_COSMOPOLITAN) 
-ssize_t codec_reg_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
-{
-	int reg, data;
-	char *r, *d;
-	struct snd_soc_pcm_runtime *rtd =
-			container_of(dev, struct snd_soc_pcm_runtime, dev);
-
-	r= &buf[0];
-	d= &buf[5];
-	reg = simple_strtoul(r, NULL, 16);
-	data = simple_strtoul(d, NULL, 16);
-
-	snd_soc_write(rtd->codec, reg, data);
-
-	return count;
-}
-
-static DEVICE_ATTR(codec_reg, 0664, codec_reg_show, codec_reg_store);
-#else
 static DEVICE_ATTR(codec_reg, 0444, codec_reg_show, NULL);
-#endif 
 
 static ssize_t pmdown_time_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
@@ -786,16 +763,6 @@ int snd_soc_pcm_close(struct snd_pcm_substream *substream)
 	cpu_dai->active--;
 	codec_dai->active--;
 	codec->active--;
-	
-#if 0
-	if (rtd->dai_link->no_pcm)
-	{
-		rtd->be_active--;
-
-		if( rtd->be_active )	
-			goto out;
-	}
-#endif	
 
 	/* Are we the backend and already enabled */
 	if (rtd->dai_link->no_pcm) {
@@ -907,6 +874,11 @@ int snd_soc_pcm_prepare(struct snd_pcm_substream *substream)
 		codec_dai->pop_wait = 0;
 		cancel_delayed_work(&rtd->delayed_work);
 	}
+
+	/* Muting the DAC suppresses artifacts caused during digital
+	 * shutdown, for example from stopping clocks.
+	 */
+	snd_soc_dai_digital_mute(codec_dai, 1);
 
 	if (rtd->dai_link->dynamic) {
 		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
@@ -1176,40 +1148,6 @@ static int soc_suspend(struct device *dev)
 	struct snd_soc_card *card = platform_get_drvdata(pdev);
 	int i;
 
-	struct snd_pcm_substream *playback_modem = snd_soc_get_dai_substream(card, "(Backend) MODEM-EXT"/*OMAP_ABE_BE_MM_EXT1*/, 0);
-	struct snd_soc_pcm_runtime *modem_rtd = (playback_modem ? playback_modem->private_data : 0);
-
-	s_bsuspend = 0;
-	
-	if( 1
-		&& modem_rtd 
-		&& (modem_rtd->cpu_dai->capture_active || modem_rtd->cpu_dai->playback_active)
-	)
-	{
-		s_bsuspend = 1;
-		return 0;
-	}
-
-#if 1
-	for (i = 0; i < card->num_rtd; i++) {
-		struct snd_soc_dai *dai = card->rtd[i].codec_dai;
-		struct snd_soc_dai_driver *drv = dai->driver;
-
-		if( card->rtd[i].dai_link->name && strcmp(card->rtd[i].dai_link->name, "SDP4430 Media Capture") == 0 ){
-			struct snd_soc_pcm_runtime *rtd;
-			int idx = 0;
-
-			for( idx = 0 ; idx < card->rtd[i].num_be[SNDRV_PCM_STREAM_CAPTURE] ; idx++ ){
-				rtd = card->rtd[i].be_rtd[idx][SNDRV_PCM_STREAM_CAPTURE];
-				if( rtd->codec_dai && rtd->codec_dai->capture_active ){
-					s_partial_suspend = 1;
-					break;
-				}
-			}
-		}
-	}
-#endif
-
 	/* If the initialization of this soc device failed, there is no codec
 	 * associated with it. Just bail out in this case.
 	 */
@@ -1246,82 +1184,77 @@ static int soc_suspend(struct device *dev)
 		snd_pcm_suspend_all(card->rtd[i].pcm);
 	}
 
-	if(s_partial_suspend==0){	
-		if (card->suspend_pre)
-			card->suspend_pre(pdev, PMSG_SUSPEND);
+	if (card->suspend_pre)
+		card->suspend_pre(pdev, PMSG_SUSPEND);
 
-		for (i = 0; i < card->num_rtd; i++) {
-			struct snd_soc_dai *cpu_dai = card->rtd[i].cpu_dai;
-			struct snd_soc_platform *platform = card->rtd[i].platform;
+	for (i = 0; i < card->num_rtd; i++) {
+		struct snd_soc_dai *cpu_dai = card->rtd[i].cpu_dai;
+		struct snd_soc_platform *platform = card->rtd[i].platform;
 
-			if (card->rtd[i].dai_link->ignore_suspend)
-				continue;
+		if (card->rtd[i].dai_link->ignore_suspend)
+			continue;
 
-			if (cpu_dai->driver->suspend && !cpu_dai->driver->ac97_control){
-				cpu_dai->driver->suspend(cpu_dai);
-			}
-			
-			if (platform->driver->suspend && !platform->suspended) {
-				platform->driver->suspend(cpu_dai);
-				platform->suspended = 1;
-			}
+		if (cpu_dai->driver->suspend && !cpu_dai->driver->ac97_control)
+			cpu_dai->driver->suspend(cpu_dai);
+		if (platform->driver->suspend && !platform->suspended) {
+			platform->driver->suspend(cpu_dai);
+			platform->suspended = 1;
 		}
-
-		/* close any waiting streams and save state */
-		for (i = 0; i < card->num_rtd; i++) {
-			run_delayed_work(&card->rtd[i].delayed_work);
-			card->rtd[i].codec->dapm->suspend_bias_level = card->rtd[i].codec->dapm->bias_level;
-		}
-
-		for (i = 0; i < card->num_rtd; i++) {
-			struct snd_soc_dai_driver *driver = card->rtd[i].codec_dai->driver;
-
-			if (card->rtd[i].dai_link->ignore_suspend)
-				continue;
-
-			if (driver->playback.stream_name != NULL)
-				snd_soc_dapm_stream_event(&card->rtd[i], SNDRV_PCM_STREAM_PLAYBACK,
-					driver->playback.stream_name, SND_SOC_DAPM_STREAM_SUSPEND);
-
-			if (driver->capture.stream_name != NULL)
-				snd_soc_dapm_stream_event(&card->rtd[i], SNDRV_PCM_STREAM_CAPTURE,
-					driver->capture.stream_name, SND_SOC_DAPM_STREAM_SUSPEND);
-		}
-
-		/* suspend all CODECs */
-		for (i = 0; i < card->num_rtd; i++) {
-			struct snd_soc_codec *codec = card->rtd[i].codec;
-			/* If there are paths active then the CODEC will be held with
-			 * bias _ON and should not be suspended. */
-			if (!codec->suspended && codec->driver->suspend) {
-				switch (codec->dapm->bias_level) {
-				case SND_SOC_BIAS_STANDBY:
-				case SND_SOC_BIAS_OFF:
-					codec->driver->suspend(codec, PMSG_SUSPEND);
-					codec->suspended = 1;
-					break;
-				default:
-					dev_dbg(codec->dev, "CODEC is on over suspend\n");
-					break;
-				}
-			}
-		}
-
-		for (i = 0; i < card->num_rtd; i++) {
-			struct snd_soc_dai *cpu_dai = card->rtd[i].cpu_dai;
-
-			if (card->rtd[i].dai_link->ignore_suspend)
-				continue;
-
-			if (cpu_dai->driver->suspend && cpu_dai->driver->ac97_control){
-				cpu_dai->driver->suspend(cpu_dai);
-			}
-		}
-
-		if (card->suspend_post)
-			card->suspend_post(pdev, PMSG_SUSPEND);
 	}
-	
+
+	/* close any waiting streams and save state */
+	for (i = 0; i < card->num_rtd; i++) {
+		run_delayed_work(&card->rtd[i].delayed_work);
+		card->rtd[i].codec->dapm->suspend_bias_level = card->rtd[i].codec->dapm->bias_level;
+	}
+
+	for (i = 0; i < card->num_rtd; i++) {
+		struct snd_soc_dai_driver *driver = card->rtd[i].codec_dai->driver;
+
+		if (card->rtd[i].dai_link->ignore_suspend)
+			continue;
+
+		if (driver->playback.stream_name != NULL)
+			snd_soc_dapm_stream_event(&card->rtd[i], SNDRV_PCM_STREAM_PLAYBACK,
+				driver->playback.stream_name, SND_SOC_DAPM_STREAM_SUSPEND);
+
+		if (driver->capture.stream_name != NULL)
+			snd_soc_dapm_stream_event(&card->rtd[i], SNDRV_PCM_STREAM_CAPTURE,
+				driver->capture.stream_name, SND_SOC_DAPM_STREAM_SUSPEND);
+	}
+
+	/* suspend all CODECs */
+	for (i = 0; i < card->num_rtd; i++) {
+		struct snd_soc_codec *codec = card->rtd[i].codec;
+		/* If there are paths active then the CODEC will be held with
+		 * bias _ON and should not be suspended. */
+		if (!codec->suspended && codec->driver->suspend) {
+			switch (codec->dapm->bias_level) {
+			case SND_SOC_BIAS_STANDBY:
+			case SND_SOC_BIAS_OFF:
+				codec->driver->suspend(codec, PMSG_SUSPEND);
+				codec->suspended = 1;
+				break;
+			default:
+				dev_dbg(codec->dev, "CODEC is on over suspend\n");
+				break;
+			}
+		}
+	}
+
+	for (i = 0; i < card->num_rtd; i++) {
+		struct snd_soc_dai *cpu_dai = card->rtd[i].cpu_dai;
+
+		if (card->rtd[i].dai_link->ignore_suspend)
+			continue;
+
+		if (cpu_dai->driver->suspend && cpu_dai->driver->ac97_control)
+			cpu_dai->driver->suspend(cpu_dai);
+	}
+
+	if (card->suspend_post)
+		card->suspend_post(pdev, PMSG_SUSPEND);
+
 	return 0;
 }
 
@@ -1344,103 +1277,89 @@ static void soc_resume_deferred(struct work_struct *work)
 	/* Bring us up into D2 so that DAPM starts enabling things */
 	snd_power_change_state(card->snd_card, SNDRV_CTL_POWER_D2);
 
-	if( s_partial_suspend == 0 ){	
-		if (card->resume_pre)
-			card->resume_pre(pdev);
+	if (card->resume_pre)
+		card->resume_pre(pdev);
 
-		/* resume AC97 DAIs */
-		for (i = 0; i < card->num_rtd; i++) {
-			struct snd_soc_dai *cpu_dai = card->rtd[i].cpu_dai;
+	/* resume AC97 DAIs */
+	for (i = 0; i < card->num_rtd; i++) {
+		struct snd_soc_dai *cpu_dai = card->rtd[i].cpu_dai;
 
-			if (card->rtd[i].dai_link->ignore_suspend)
-				continue;
+		if (card->rtd[i].dai_link->ignore_suspend)
+			continue;
 
-			if (cpu_dai->driver->resume && cpu_dai->driver->ac97_control)
-				cpu_dai->driver->resume(cpu_dai);
-		}
+		if (cpu_dai->driver->resume && cpu_dai->driver->ac97_control)
+			cpu_dai->driver->resume(cpu_dai);
+	}
 
-		for (i = 0; i < card->num_rtd; i++) {
-			struct snd_soc_codec *codec = card->rtd[i].codec;
-			/* If the CODEC was idle over suspend then it will have been
-			 * left with bias OFF or STANDBY and suspended so we must now
-			 * resume.  Otherwise the suspend was suppressed.
-			 */
-			if (codec->driver->resume && codec->suspended) {
-				switch (codec->dapm->bias_level) {
-				case SND_SOC_BIAS_STANDBY:
-				case SND_SOC_BIAS_OFF:
-					codec->driver->resume(codec);
-					codec->suspended = 0;
-					break;
-				default:
-					dev_dbg(codec->dev, "CODEC was on over suspend\n");
-					break;
-				}
+	for (i = 0; i < card->num_rtd; i++) {
+		struct snd_soc_codec *codec = card->rtd[i].codec;
+		/* If the CODEC was idle over suspend then it will have been
+		 * left with bias OFF or STANDBY and suspended so we must now
+		 * resume.  Otherwise the suspend was suppressed.
+		 */
+		if (codec->driver->resume && codec->suspended) {
+			switch (codec->dapm->bias_level) {
+			case SND_SOC_BIAS_STANDBY:
+			case SND_SOC_BIAS_OFF:
+				codec->driver->resume(codec);
+				codec->suspended = 0;
+				break;
+			default:
+				dev_dbg(codec->dev, "CODEC was on over suspend\n");
+				break;
 			}
 		}
-
-		for (i = 0; i < card->num_rtd; i++) {
-			struct snd_soc_dai_driver *driver = card->rtd[i].codec_dai->driver;
-
-			if (card->rtd[i].dai_link->ignore_suspend)
-				continue;
-
-			if (driver->playback.stream_name != NULL)
-				snd_soc_dapm_stream_event(&card->rtd[i], SNDRV_PCM_STREAM_PLAYBACK,
-					driver->playback.stream_name, SND_SOC_DAPM_STREAM_RESUME);
-
-			if (driver->capture.stream_name != NULL)
-				snd_soc_dapm_stream_event(&card->rtd[i], SNDRV_PCM_STREAM_CAPTURE,
-					driver->capture.stream_name, SND_SOC_DAPM_STREAM_RESUME);
-		}
-
-		/* unmute any active DACs */
-		for (i = 0; i < card->num_rtd; i++) {
-			struct snd_soc_dai *dai = card->rtd[i].codec_dai;
-			struct snd_soc_dai_driver *drv = dai->driver;
-
-			if (card->rtd[i].dai_link->ignore_suspend)
-				continue;
-
-			if (drv->ops->digital_mute && dai->playback_active)
-				drv->ops->digital_mute(dai, 0);
-		}
-
-		for (i = 0; i < card->num_rtd; i++) {
-			struct snd_soc_dai *cpu_dai = card->rtd[i].cpu_dai;
-			struct snd_soc_platform *platform = card->rtd[i].platform;
-
-			if (card->rtd[i].dai_link->ignore_suspend)
-				continue;
-
-			if (cpu_dai->driver->resume && !cpu_dai->driver->ac97_control)
-				cpu_dai->driver->resume(cpu_dai);
-			if (platform->driver->resume && platform->suspended) {
-				platform->driver->resume(cpu_dai);
-				platform->suspended = 0;
-			}
-		}
-
-		if (card->resume_post)
-			card->resume_post(pdev);
 	}
-	else{
-		s_partial_suspend = 0;
+
+	for (i = 0; i < card->num_rtd; i++) {
+		struct snd_soc_dai_driver *driver = card->rtd[i].codec_dai->driver;
+
+		if (card->rtd[i].dai_link->ignore_suspend)
+			continue;
+
+		if (driver->playback.stream_name != NULL)
+			snd_soc_dapm_stream_event(&card->rtd[i], SNDRV_PCM_STREAM_PLAYBACK,
+				driver->playback.stream_name, SND_SOC_DAPM_STREAM_RESUME);
+
+		if (driver->capture.stream_name != NULL)
+			snd_soc_dapm_stream_event(&card->rtd[i], SNDRV_PCM_STREAM_CAPTURE,
+				driver->capture.stream_name, SND_SOC_DAPM_STREAM_RESUME);
 	}
-	
+
+	/* unmute any active DACs */
+	for (i = 0; i < card->num_rtd; i++) {
+		struct snd_soc_dai *dai = card->rtd[i].codec_dai;
+		struct snd_soc_dai_driver *drv = dai->driver;
+
+		if (card->rtd[i].dai_link->ignore_suspend)
+			continue;
+
+		if (drv->ops->digital_mute && dai->playback_active)
+			drv->ops->digital_mute(dai, 0);
+	}
+
+	for (i = 0; i < card->num_rtd; i++) {
+		struct snd_soc_dai *cpu_dai = card->rtd[i].cpu_dai;
+		struct snd_soc_platform *platform = card->rtd[i].platform;
+
+		if (card->rtd[i].dai_link->ignore_suspend)
+			continue;
+
+		if (cpu_dai->driver->resume && !cpu_dai->driver->ac97_control)
+			cpu_dai->driver->resume(cpu_dai);
+		if (platform->driver->resume && platform->suspended) {
+			platform->driver->resume(cpu_dai);
+			platform->suspended = 0;
+		}
+	}
+
+	if (card->resume_post)
+		card->resume_post(pdev);
+
 	dev_dbg(card->dev, "resume work completed\n");
 
 	/* userspace can access us now we are back as we were before */
 	snd_power_change_state(card->snd_card, SNDRV_CTL_POWER_D0);
-
-	/* suspend all pcms */
-	for (i = 0; i < card->num_rtd; i++) {
-		if (card->rtd[i].dai_link->ignore_suspend)
-			continue;
-
-		snd_pcm_resume_all(card->rtd[i].pcm);
-	}
-
 }
 
 /* powers up audio subsystem after a suspend */
@@ -1450,8 +1369,6 @@ static int soc_resume(struct device *dev)
 	struct snd_soc_card *card = platform_get_drvdata(pdev);
 	int i;
 
-	if( s_bsuspend == 1 ) return 0;
-	
 	/* AC97 devices might have other drivers hanging off them so
 	 * need to resume immediately.  Other drivers don't have that
 	 * problem and may take a substantial amount of time to resume
@@ -2417,8 +2334,6 @@ int snd_soc_info_enum_double(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_info *uinfo)
 {
 	struct soc_enum *e = (struct soc_enum *)kcontrol->private_value;
-	int target_size = sizeof(uinfo->value.enumerated.name);
-	int src_size = 0;
 
 	uinfo->type = SNDRV_CTL_ELEM_TYPE_ENUMERATED;
 	uinfo->count = e->shift_l == e->shift_r ? 1 : 2;
@@ -2426,12 +2341,8 @@ int snd_soc_info_enum_double(struct snd_kcontrol *kcontrol,
 
 	if (uinfo->value.enumerated.item > e->max - 1)
 		uinfo->value.enumerated.item = e->max - 1;
-
-	src_size = e->texts[uinfo->value.enumerated.item] ? strlen(e->texts[uinfo->value.enumerated.item]) : 0; 
-
-	if( target_size > src_size )
-		strcpy(uinfo->value.enumerated.name,
-			e->texts[uinfo->value.enumerated.item]);
+	strcpy(uinfo->value.enumerated.name,
+		e->texts[uinfo->value.enumerated.item]);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_info_enum_double);
@@ -2587,22 +2498,15 @@ int snd_soc_info_enum_ext(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_info *uinfo)
 {
 	struct soc_enum *e = (struct soc_enum *)kcontrol->private_value;
-	int target_size = sizeof(uinfo->value.enumerated.name);
-	int src_size = 0;
-	
+
 	uinfo->type = SNDRV_CTL_ELEM_TYPE_ENUMERATED;
 	uinfo->count = 1;
 	uinfo->value.enumerated.items = e->max;
 
 	if (uinfo->value.enumerated.item > e->max - 1)
 		uinfo->value.enumerated.item = e->max - 1;
-
-	src_size = e->texts[uinfo->value.enumerated.item] ? strlen(e->texts[uinfo->value.enumerated.item]) : 0; 
-
-	if( target_size > src_size )
-		strcpy(uinfo->value.enumerated.name,
-			e->texts[uinfo->value.enumerated.item]);
-	
+	strcpy(uinfo->value.enumerated.name,
+		e->texts[uinfo->value.enumerated.item]);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_info_enum_ext);
@@ -3321,14 +3225,12 @@ static int snd_soc_unregister_card(struct snd_soc_card *card)
  */
 static inline char *fmt_single_name(struct device *dev, int *id)
 {
-	char *found, name[NAME_SIZE+1];
+	char *found, name[NAME_SIZE];
 	int id1, id2;
 
 	if (dev_name(dev) == NULL)
 		return NULL;
 
-	memset(name, 0, NAME_SIZE+1);
-	
 	strncpy(name, dev_name(dev), NAME_SIZE);
 
 	/* are we a "%s.%d" name (platform and SPI components) */

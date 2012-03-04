@@ -21,9 +21,8 @@
 #include <linux/usb/otg.h>
 #include <linux/spi/spi.h>
 #include <linux/i2c/twl.h>
-//#include <linux/i2c/cma3000.h>
-//#include <linux/i2c/bq2415x.h>
 #include <linux/regulator/machine.h>
+#include <linux/regulator/tps6130x.h>
 #include <linux/input/sfh7741.h>
 #include <linux/leds.h>
 #include <linux/leds_pwm.h>
@@ -31,6 +30,7 @@
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/twl6040-vib.h>
+#include <linux/mfd/twl6040-codec.h>
 
 #include <mach/hardware.h>
 #include <mach/omap4-common.h>
@@ -419,7 +419,6 @@ static struct platform_device sdp4430_vib = {
 
 static struct pwm_vib_platform_data vib_data = {
         .max_timeout            =       15000,
-        .active_low                     =       0,
         .initial_vibrate        =       0,
 };
 
@@ -1361,28 +1360,88 @@ static struct twl4030_bci_platform_data sdp4430_bci_data = {
 	.battery_tmp_tbl		= sdp4430_batt_table,
 	.tblsize			= ARRAY_SIZE(sdp4430_batt_table),
 };
+
 #if defined(CONFIG_MACH_LGE_COSMO_REV_A)
 #define EAR_SENSE_GPIO	21
 #endif
 
+
+static void omap4_audio_conf(void)
+{
+       /* twl6040 naudint */
+       omap_mux_init_signal("sys_nirq2.sys_nirq2", \
+               OMAP_PIN_INPUT_PULLUP);
+}
+
+static int tps6130x_enable(int on)
+{
+	u8 val = 0;
+	int ret;
+
+	ret = twl_i2c_read_u8(TWL_MODULE_AUDIO_VOICE, &val, TWL6040_REG_GPOCTL);
+	if (ret < 0) {
+		pr_err("%s: failed to read GPOCTL %d\n", __func__, ret);
+		return ret;
+	}
+
+	/* TWL6040 GPO2 connected to TPS6130X NRESET */
+	if (on)
+		val |= TWL6040_GPO2;
+	else
+		val &= ~TWL6040_GPO2;
+
+	ret = twl_i2c_write_u8(TWL_MODULE_AUDIO_VOICE, val, TWL6040_REG_GPOCTL);
+	if (ret < 0)
+		pr_err("%s: failed to write GPOCTL %d\n", __func__, ret);
+
+	return ret;
+}
+
+struct tps6130x_platform_data tps6130x_pdata = {
+	.chip_enable    = tps6130x_enable,
+};
+
+static struct regulator_consumer_supply twl6040_vddhf_supply[] = {
+	REGULATOR_SUPPLY("vddhf", "twl6040-codec"),
+};
+
+static struct regulator_init_data twl6040_vddhf = {
+	.constraints = {
+		.min_uV                 = 4075000,
+		.max_uV                 = 4950000,
+		.apply_uV               = true,
+		.valid_modes_mask       = REGULATOR_MODE_NORMAL
+			| REGULATOR_MODE_STANDBY,
+		.valid_ops_mask         = REGULATOR_CHANGE_VOLTAGE
+			| REGULATOR_CHANGE_MODE
+			| REGULATOR_CHANGE_STATUS,
+	},
+	.num_consumer_supplies  = ARRAY_SIZE(twl6040_vddhf_supply),
+	.consumer_supplies      = twl6040_vddhf_supply,
+	.driver_data            = &tps6130x_pdata,
+};
+
 static struct twl4030_codec_audio_data twl6040_audio = {
-	.audio_mclk	= 38400000,
-	.audpwron_gpio  = 127,
-	.naudint_irq    = OMAP44XX_IRQ_SYS_2N,
-#if defined(CONFIG_MACH_LGE_COSMO_REV_A)
-	.hsjack_gpio	= EAR_SENSE_GPIO,
-	.hsjack_irq		= OMAP_GPIO_IRQ(EAR_SENSE_GPIO),
-#endif
+	.vddhf_uV       = 4075000,
 };
 
 static struct twl4030_codec_vibra_data twl6040_vibra = {
-	.audio_mclk	= 38400000,
+	.max_timeout    = 15000,
+	.initial_vibrate = 0,
 };
 
 static struct twl4030_codec_data twl6040_codec = {
-	.audio_mclk	= 38400000,
 	.audio = &twl6040_audio,
 	.vibra = &twl6040_vibra,
+	.audpwron_gpio  = 127,
+	.naudint_irq    = OMAP44XX_IRQ_SYS_2N,
+        .irq_base       = TWL6040_CODEC_IRQ_BASE,
+};
+
+static struct regulator_init_data sdp4430_clk32kg = {
+	.constraints = {
+		.valid_ops_mask         = REGULATOR_CHANGE_STATUS,
+	},
 };
 
 static struct twl4030_platform_data sdp4430_twldata = {
@@ -1719,6 +1778,10 @@ static struct i2c_board_info __initdata sdp4430_i2c_boardinfo[] = {
 	},
 	{
 		I2C_BOARD_INFO("cdc_tcxo_driver", 0x6c),
+	},
+	{
+		I2C_BOARD_INFO("tps6130x", 0x33),
+		.platform_data = &twl6040_vddhf,
 	},
 };
 
@@ -2403,7 +2466,7 @@ static void __init lge_cosmopolitan_init(void)
 #endif
 	omap_emif_setup_device_details(&emif_devices, &emif_devices);
 	omap_init_emif_timings();
-
+	omap4_audio_conf();
 	omap4_i2c_init();
 #if defined (CONFIG_MACH_LGE_CX2)
 	lge_add_i2c_gpio_device();

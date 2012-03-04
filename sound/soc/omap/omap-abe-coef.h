@@ -31,16 +31,16 @@
  * coefficients can be computed for specific needs.
  */
 
-#define NBDL1EQ_PROFILES 6  /* Number of supported DL1EQ profiles */
+#define NBDL1EQ_PROFILES 4  /* Number of supported DL1EQ profiles */
 #define NBDL1COEFFS 25      /* Number of coefficients for DL1EQ profiles */
-#define NBDL20EQ_PROFILES 6 /* Number of supported DL2EQ_L profiles */
-#define NBDL21EQ_PROFILES 6 /* Number of supported DL2EQ_R profiles */
+#define NBDL20EQ_PROFILES 4 /* Number of supported DL2EQ_L profiles */
+#define NBDL21EQ_PROFILES 4 /* Number of supported DL2EQ_R profiles */
 #define NBDL2COEFFS 25      /* Number of coefficients of DL2EQ profiles */
-#define NBAMICEQ_PROFILES 4 /* Number of supported AMICEQ profiles */
+#define NBAMICEQ_PROFILES 3 /* Number of supported AMICEQ profiles */
 #define NBAMICCOEFFS 19     /* Number of coefficients of AMICEQ profiles */
 #define NBSDTEQ_PROFILES 4  /* Number of supported SDTEQ profiles */
 #define NBSDTCOEFFS 9       /* Number of coefficients for SDTEQ profiles */
-#define NBDMICEQ_PROFILES 4 /* Number of supported DMICEQ profiles */
+#define NBDMICEQ_PROFILES 3 /* Number of supported DMICEQ profiles */
 #define NBDMICCOEFFS 19     /* Number of coefficients of DMICEQ profiles */
 
 /*
@@ -68,22 +68,8 @@ const s32 dl1_equ_coeffs[NBDL1EQ_PROFILES][NBDL1COEFFS] = {
 				{0, 0, 0, 0, 0, 0, 0, 0, 0, -1510844,
 				4532536, -4532536, 1510844, 0, 0, 0, 0,
 				0, 0, 0, 0, 0, 6802833, -682266, 731554},
-/* 4kHz cut-off frequency - Gain = 0dB Low pass - Att 20dB */
-				{3, 3, 1379708, -6726356, 8230633, -410286,
-				499162, -522034, 499162, -410286, 8230633,
-				-6726356, 1379708, 3, 3, -336216, 3624336,
-				-337466, 1277386, -3283062, 5917890, -7564798,
-				6779594, -4092070, 1510274},    
-/* 4kHz cut-off frequency - Gain = 0dB Low pass - Att 20dB */
-//				{3, 2251996, 17903, 6190124, 3115340, 8042992,
-//				7059644, 7059644, 8042992, 3115340, 6190124,
-//				17903, 2251996, 3, -301608, -508736, -1357452,
-//				-3202756, -789364, -7584747, 7591373, -710254,
-//				658890, -852766, 429186},
-				{0, 0, 0, 0, 0, 0, 0, 0, 0, 190000,
-				570000, 570000, 190000, 0, 0, 0, 0,
-				0, 0, 0, 0, 0, 5811800, -366998, 514590},
 };
+
 /*
  * Coefficients for DL2EQ_L
  */
@@ -110,20 +96,6 @@ const s32 dl20_equ_coeffs[NBDL20EQ_PROFILES][NBDL2COEFFS] = {
 				{0, 0, 0, 0, 0, 0, 0, 0, 0, -1510844,
 				4532536, -4532536, 1510844, 0, 0, 0, 0,
 				0, 0, 0, 0, 0, 6802833, -682266, 731554},
-
-/* 4kHz cut-off frequency - Gain = 0dB Low pass - Att 20dB */
-				{3, 3, 1379708, -6726356, 8230633, -410286,
-				499162, -522034, 499162, -410286, 8230633,
-				-6726356, 1379708, 3, 3, -336216, 3624336,
-				-337466, 1277386, -3283062, 5917890, -7564798,
-				6779594, -4092070, 1510274},         
-
-/* 4kHz cut-off frequency - Gain = 0dB Low pass - Att 20dB */
-				{3, 2251996, 17903, 6190124, 3115340, 8042992,
-				7059644, 7059644, 8042992, 3115340, 6190124,
-				17903, 2251996, 3, -301608, -508736, -1357452,
-				-3202756, -789364, -7584747, 7591373, -710254,
-				658890, -852766, 429186},
 };
 
 /*
@@ -151,33 +123,12 @@ const s32 dl21_equ_coeffs[NBDL20EQ_PROFILES][NBDL2COEFFS] = {
 				{0, 0, 0, 0, 0, 0, 0, 0, 0, -1510844,
 				4532536, -4532536, 1510844, 0, 0, 0, 0,
 				0, 0, 0, 0, 0, 6802833, -682266, 731554},
-
-/* 4kHz cut-off frequency - Gain = 0dB Low pass - Att 20dB */
-				{3, 3, 1379708, -6726356, 8230633, -410286,
-				499162, -522034, 499162, -410286, 8230633,
-				-6726356, 1379708, 3, 3, -336216, 3624336,
-				-337466, 1277386, -3283062, 5917890, -7564798,
-				6779594, -4092070, 1510274},         
-
-/* 4kHz cut-off frequency - Gain = 0dB Low pass - Att 20dB */
-				{3, 2251996, 17903, 6190124, 3115340, 8042992,
-				7059644, 7059644, 8042992, 3115340, 6190124,
-				17903, 2251996, 3, -301608, -508736, -1357452,
-				-3202756, -789364, -7584747, 7591373, -710254,
-				658890, -852766, 429186},
 };
 
 /*
  * Coefficients for DMICEQ
  */
 const u32 dmic_equ_coeffs[NBDMICEQ_PROFILES][NBDMICCOEFFS] = {
-/* Flat response with Gain = 0dB */
-				{0, 0,
-				0, 0, 0, 0, 0,
-				0, 0, 0x040002, 0, 0,
-				0, 0, 0, 0, 0,
-				0, 0},
-
 /* 20kHz cut-off frequency and Gain = 0dB */
 				{-4119413, -192384, -341428, -348088,
 				-151380, 151380, 348088, 341428, 192384,
@@ -229,13 +180,6 @@ const u32 amic_equ_coeffs[NBAMICEQ_PROFILES][NBAMICCOEFFS] = {
 				1539063, 514939, 1938188, -6935811,
 				775210, -1801950, 2997722, -3692238,
 				3406838, -2280198, 1042982},
-				
-/* Flat response with Gain = 0dB */
-				{0, 0,
-				0, 0, 0, 0, 0,
-				0, 0, 0x040002, 0, 0,
-				0, 0, 0, 0, 0,
-				0, 0},
 };
 
 

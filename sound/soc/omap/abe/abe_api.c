@@ -14,7 +14,7 @@
  *
  * This program is distributed in the hope that it will be useful, but
  * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -59,16 +59,8 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
-#include <linux/delay.h>
-#include <linux/pm.h>
-#include <linux/i2c.h>
-#include <linux/gpio.h>
-#include <linux/platform_device.h>
-#include <linux/workqueue.h>
-#include <linux/clk.h>
 #include <linux/err.h>
 #include <linux/slab.h>
-#include <linux/pm_runtime.h>
 
 #include "abe_main.h"
 #include "abe_ref.h"
@@ -94,10 +86,6 @@ int abe_reset_hal(void)
 	abe->dbg_activity_log_write_pointer = 0;
 	/* IRQ & DBG circular read pointer in DMEM */
 	abe->irq_dbg_read_ptr = 0;
-	/* PDM_DL enable/disable collisions */
-	abe->pdm_dl1_status = 0;
-	abe->pdm_dl2_status = 0;
-	abe->pdm_vib_status = 0;
 	/* default = disable the mixer's adaptive gain control */
 	abe_use_compensated_gain(0);
 	/* reset the default gain values */
@@ -132,6 +120,8 @@ int abe_load_fw_param(u32 *ABE_FW)
 {
 	u32 pmem_size, dmem_size, smem_size, cmem_size;
 	u32 *pmem_ptr, *dmem_ptr, *smem_ptr, *cmem_ptr, *fw_ptr;
+	/* fast counter timer set at 4096 * 250us = 1,024s */
+	u32 data = 0x10001000;
 
 	_log(id_load_fw_param, 0, 0, 0);
 #define ABE_FW_OFFSET 5
@@ -154,6 +144,10 @@ int abe_load_fw_param(u32 *ABE_FW)
 	abe_block_copy(COPY_FROM_HOST_TO_ABE, ABE_DMEM, 0,
 		       dmem_ptr, dmem_size);
 
+	abe_block_copy(COPY_FROM_HOST_TO_ABE, ABE_DMEM,
+			D_fastCounter_ADDR, &data,
+			D_fastCounter_sizeof);
+
 	return 0;
 }
 EXPORT_SYMBOL(abe_load_fw_param);
@@ -168,7 +162,13 @@ int abe_reload_fw(void)
 	/* IRQ & DBG circular read pointer in DMEM */
 	abe->dbg_activity_log_write_pointer = 0;
 	abe->irq_dbg_read_ptr = 0;
-
+	/* Restore Gains not managed by the drivers */
+	abe_write_gain(GAINS_SPLIT, GAIN_0dB, RAMP_5MS, GAIN_LEFT_OFFSET);
+	abe_write_gain(GAINS_SPLIT, GAIN_0dB, RAMP_5MS, GAIN_RIGHT_OFFSET);
+	abe_write_gain(GAINS_DL1, GAIN_0dB, RAMP_5MS, GAIN_LEFT_OFFSET);
+	abe_write_gain(GAINS_DL1, GAIN_0dB, RAMP_5MS, GAIN_RIGHT_OFFSET);
+	abe_write_gain(GAINS_DL2, GAIN_0dB, RAMP_5MS, GAIN_LEFT_OFFSET);
+	abe_write_gain(GAINS_DL2, GAIN_0dB, RAMP_5MS, GAIN_RIGHT_OFFSET);
 	return 0;
 }
 EXPORT_SYMBOL(abe_reload_fw);
@@ -205,10 +205,10 @@ EXPORT_SYMBOL(abe_load_fw);
  *	the HAL/FW/AESS_ATC. Will be upgraded in FW06.
  */
 int abe_read_hardware_configuration(u32 *u, u32 *o,
-					      abe_hw_config_init_t *hw)
+				abe_hw_config_init_t *hw)
 {
 	_log(id_read_hardware_configuration, (u32) u,
-	     (u32) u >> 8, (u32) u >> 16);
+		(u32) u >> 8, (u32) u >> 16);
 	abe_read_use_case_opp(u, o);
 	/* 0: 96kHz 1:192kHz */
 	hw->MCPDM_CTRL__DIV_SEL = 0;
@@ -293,7 +293,7 @@ int abe_irq_processing(void)
 	/* CMEM address of the write pointer in bytes */
 	cmem_src = MCU_IRQ_FIFO_ptr_labelID << 2;
 	abe_block_copy(COPY_FROM_ABE_TO_HOST, ABE_CMEM, cmem_src,
-		       &sm_cm, sizeof(abe_irq_dbg_write_ptr));
+			&sm_cm, sizeof(abe_irq_dbg_write_ptr));
 	/* AESS left-pointer index located on MSBs */
 	abe_irq_dbg_write_ptr = sm_cm >> 16;
 	abe_irq_dbg_write_ptr &= 0xFF;
@@ -322,13 +322,12 @@ int abe_irq_processing(void)
 		case IRQtag_COUNT:
 			_log(id_irq_processing, IRQ_data.data, 0, 3);
 			abe_irq_check_for_sequences(IRQ_data.data);
+			abe_monitoring();
 			break;
 		default:
 			break;
 		}
 	}
-	abe_monitoring();
-
 	return 0;
 }
 EXPORT_SYMBOL(abe_irq_processing);
@@ -354,7 +353,7 @@ int abe_select_main_port(u32 id)
 	if (abe_port[id].protocol.direction == ABE_ATC_DIRECTION_IN)
 		selection |= 0x80000;
 	abe_block_copy(COPY_FROM_HOST_TO_ABE, ABE_DMEM, D_Slot23_ctrl_ADDR,
-		       &selection, 4);
+			&selection, 4);
 	return 0;
 }
 
@@ -473,9 +472,9 @@ int abe_set_opp_processing(u32 opp)
 	abe_block_copy(COPY_FROM_HOST_TO_ABE, ABE_DMEM,
 		       D_maxTaskBytesInSlot_ADDR, &dOppMode32, sizeof(u32));
 	sio_desc_address = dmem_port_descriptors + (MM_EXT_IN_PORT *
-						    sizeof(ABE_SIODescriptor));
+						sizeof(ABE_SIODescriptor));
 	abe_block_copy(COPY_FROM_ABE_TO_HOST, ABE_DMEM, sio_desc_address,
-		       (u32 *) &sio_desc, sizeof(sio_desc));
+			(u32 *) &sio_desc, sizeof(sio_desc));
 	if (dOppMode32 == DOPPMODE32_OPP100) {
 		/* ASRC input buffer, size 40 */
 		sio_desc.smem_addr1 = smem_mm_ext_in_opp100;
@@ -487,18 +486,18 @@ int abe_set_opp_processing(u32 opp)
 	}
 
 	abe_block_copy(COPY_FROM_HOST_TO_ABE, ABE_DMEM, sio_desc_address,
-		       (u32 *) &sio_desc, sizeof(sio_desc));
+			(u32 *) &sio_desc, sizeof(sio_desc));
 
 	sio_desc_address = dmem_port_descriptors + (BT_VX_UL_PORT *
-						    sizeof(ABE_SIODescriptor));
+						sizeof(ABE_SIODescriptor));
 	abe_block_copy(COPY_FROM_ABE_TO_HOST, ABE_DMEM, sio_desc_address,
-		       (u32 *) &sio_desc, sizeof(sio_desc));
+			(u32 *) &sio_desc, sizeof(sio_desc));
 	if (abe_port[BT_VX_UL_PORT].format.f == 8000) {
 		if (dOppMode32 == DOPPMODE32_OPP100)
-		/* ASRC input buffer, size 40 */
-		sio_desc.smem_addr1 = smem_bt_vx_ul_opp100;
+			/* ASRC input buffer, size 40 */
+			sio_desc.smem_addr1 = smem_bt_vx_ul_opp100;
 		else
-				/* at OPP 50 without ASRC */
+			/* at OPP 50 without ASRC */
 			sio_desc.smem_addr1 = BT_UL_8k_labelID;
 	} else {
 		if (dOppMode32 == DOPPMODE32_OPP100)
@@ -513,35 +512,40 @@ int abe_set_opp_processing(u32 opp)
 		       (u32 *) &sio_desc, sizeof(sio_desc));
 
 	sio_desc_address = dmem_port_descriptors + (BT_VX_DL_PORT *
-						    sizeof(ABE_SIODescriptor));
+						sizeof(ABE_SIODescriptor));
 	abe_block_copy(COPY_FROM_ABE_TO_HOST, ABE_DMEM, sio_desc_address,
 		       (u32 *) &sio_desc, sizeof(sio_desc));
 #define ABE_TASK_ID(ID) (D_tasksList_ADDR + sizeof(ABE_STask)*(ID))
 #define TASK_BT_DL_48_8_SLT 14
 #define TASK_BT_DL_48_8_IDX 4
- 	if (abe_port[BT_VX_DL_PORT].format.f == 8000) {
-	if (dOppMode32 == DOPPMODE32_OPP100) {
-			abe->MultiFrame[TASK_BT_DL_48_8_SLT][TASK_BT_DL_48_8_IDX] =
+	if (abe_port[BT_VX_DL_PORT].format.f == 8000) {
+		if (dOppMode32 == DOPPMODE32_OPP100) {
+			abe->MultiFrame[TASK_BT_DL_48_8_SLT]
+				[TASK_BT_DL_48_8_IDX] =
 				ABE_TASK_ID(C_ABE_FW_TASK_BT_DL_48_8_OPP100);
 			sio_desc.smem_addr1 = BT_DL_8k_opp100_labelID;
-	} else {
-			abe->MultiFrame[TASK_BT_DL_48_8_SLT][TASK_BT_DL_48_8_IDX] =
+		} else {
+			abe->MultiFrame[TASK_BT_DL_48_8_SLT]
+				[TASK_BT_DL_48_8_IDX] =
 				ABE_TASK_ID(C_ABE_FW_TASK_BT_DL_48_8);
 			sio_desc.smem_addr1 = BT_DL_8k_labelID;
-	}
+		}
 	} else {
 		if (dOppMode32 == DOPPMODE32_OPP100) {
-			abe->MultiFrame[TASK_BT_DL_48_8_SLT][TASK_BT_DL_48_8_IDX] =
+			abe->MultiFrame[TASK_BT_DL_48_8_SLT]
+				[TASK_BT_DL_48_8_IDX] =
 				ABE_TASK_ID(C_ABE_FW_TASK_BT_DL_48_16_OPP100);
 			sio_desc.smem_addr1 = BT_DL_16k_opp100_labelID;
 		} else {
-			abe->MultiFrame[TASK_BT_DL_48_8_SLT][TASK_BT_DL_48_8_IDX] =
+			abe->MultiFrame[TASK_BT_DL_48_8_SLT]
+				[TASK_BT_DL_48_8_IDX] =
 				ABE_TASK_ID(C_ABE_FW_TASK_BT_DL_48_16);
 			sio_desc.smem_addr1 = BT_DL_16k_labelID;
 		}
 	}
 	abe_block_copy(COPY_FROM_HOST_TO_ABE, ABE_DMEM, D_multiFrame_ADDR,
-				(u32 *) abe->MultiFrame, sizeof(abe->MultiFrame));
+				(u32 *) abe->MultiFrame,
+				sizeof(abe->MultiFrame));
 	abe_block_copy(COPY_FROM_HOST_TO_ABE, ABE_DMEM, sio_desc_address,
 		       (u32 *) &sio_desc, sizeof(sio_desc));
 
@@ -552,7 +556,7 @@ int abe_set_opp_processing(u32 opp)
 		abe_init_asrc_bt_dl(-250);
 	}
 
-	return 0;	
+	return 0;
 
 }
 EXPORT_SYMBOL(abe_set_opp_processing);
@@ -585,7 +589,7 @@ int abe_set_ping_pong_buffer(u32 port, u32 n_bytes)
 	datasize = datasize << 2;
 	n_samples = n_bytes / datasize;
 	abe_block_copy(COPY_FROM_ABE_TO_HOST, ABE_DMEM, D_PingPongDesc_ADDR,
-		       (u32 *) &desc_pp, sizeof(desc_pp));
+			(u32 *) &desc_pp, sizeof(desc_pp));
 	/*
 	 * read the port SIO descriptor and extract the current pointer
 	 * address after reading the counter
@@ -603,7 +607,7 @@ int abe_set_ping_pong_buffer(u32 port, u32 n_bytes)
 	sio_pp_desc_address = D_PingPongDesc_ADDR + struct_offset;
 	src = &base_and_size;
 	abe_block_copy(COPY_FROM_HOST_TO_ABE, ABE_DMEM, sio_pp_desc_address,
-		       (u32 *) &base_and_size, sizeof(u32));
+			(u32 *) &base_and_size, sizeof(u32));
 
 	return 0;
 }
@@ -633,7 +637,7 @@ int abe_read_next_ping_pong_buffer(u32 port, u32 *p, u32 *n)
 	   address after reading the counter */
 	sio_pp_desc_address = D_PingPongDesc_ADDR;
 	abe_block_copy(COPY_FROM_ABE_TO_HOST, ABE_DMEM, sio_pp_desc_address,
-		       (u32 *) &desc_pp, sizeof(ABE_SPingPongDescriptor));
+			(u32 *) &desc_pp, sizeof(ABE_SPingPongDescriptor));
 	if ((desc_pp.counter & 0x1) == 0) {
 		_log(id_read_next_ping_pong_buffer, port, 0, 0);
 		*p = desc_pp.nextbuff0_BaseAddr;
@@ -659,7 +663,7 @@ EXPORT_SYMBOL(abe_read_next_ping_pong_buffer);
  * Computes the base address of the ping_pong buffers
  */
 int abe_init_ping_pong_buffer(u32 id, u32 size_bytes, u32 n_buffers,
-					u32 *p)
+				u32 *p)
 {
 	u32 i, dmem_addr;
 
@@ -753,10 +757,10 @@ EXPORT_SYMBOL(abe_read_offset_from_ping_buffer);
  * register a list of subroutines for call-back purpose
  */
 int abe_plug_subroutine(u32 *id, abe_subroutine2 f, u32 n,
-				  u32 *params)
+			  u32 *params)
 {
 	_log(id_plug_subroutine, (u32) (*id), (u32) f, n);
-		abe_add_subroutine(id, (abe_subroutine2) f, n, (u32 *) params);
+	abe_add_subroutine(id, (abe_subroutine2) f, n, (u32 *) params);
 	return 0;
 }
 EXPORT_SYMBOL(abe_plug_subroutine);
@@ -817,7 +821,7 @@ int abe_read_remaining_data(u32 port, u32 *n)
 	 */
 	sio_pp_desc_address = D_PingPongDesc_ADDR;
 	abe_block_copy(COPY_FROM_ABE_TO_HOST, ABE_DMEM, sio_pp_desc_address,
-		       (u32 *) &desc_pp, sizeof(ABE_SPingPongDescriptor));
+			(u32 *) &desc_pp, sizeof(ABE_SPingPongDescriptor));
 	*n = desc_pp.workbuff_Samples;
 
 	return 0;
@@ -837,29 +841,6 @@ int abe_disable_data_transfer(u32 id)
 	abe_port_protocol_t *protocol;
 
 	_log(id_disable_data_transfer, id, 0, 0);
-	/*
-	 * there is only one PDM_DL physical port shared
-	 * with DL1/DL2/VIB. Here is a check for the need to stop
-	 * PDM_DL if some activity is already on
-	 */
-	if (id == PDM_DL1_PORT) {
-		abe->pdm_dl1_status = 0;
-		if (abe->pdm_dl2_status || abe->pdm_vib_status)
-			return 0;
-		id = PDM_DL_PORT;
-	}
-	if (id == PDM_DL2_PORT) {
-		abe->pdm_dl2_status = 0;
-		if (abe->pdm_dl1_status || abe->pdm_vib_status)
-			return 0;
-		id = PDM_DL_PORT;
-	}
-	if (id == PDM_VIB_PORT) {
-		abe->pdm_vib_status = 0;
-		if (abe->pdm_dl1_status || abe->pdm_dl2_status)
-			return 0;
-		id = PDM_DL_PORT;
-	}
 	/* MM_DL managed in ping-pong */
 	if (id == MM_DL_PORT) {
 		protocol = &(abe_port[MM_DL_PORT].protocol);
@@ -894,29 +875,6 @@ int abe_enable_data_transfer(u32 id)
 	abe_data_format_t format;
 
 	_log(id_enable_data_transfer, id, 0, 0);
-	/*
-	 * there is only one PDM_DL physical port shared
-	 * with DL1/DL2/VIB. Here is a check for the need to enable
-	 * PDM_DL when some activity is already on
-	 */
-	if (id == PDM_DL1_PORT) {
-		id = PDM_DL_PORT;
-		if (abe->pdm_dl1_status == 1)
-			return 0;
-		abe->pdm_dl1_status = 1;
-	}
-	if (id == PDM_DL2_PORT) {
-		id = PDM_DL_PORT;
-		if (abe->pdm_dl2_status == 1)
-			return 0;
-		abe->pdm_dl2_status = 1;
-	}
-	if (id == PDM_VIB_PORT) {
-		id = PDM_DL_PORT;
-		if (abe->pdm_vib_status == 1)
-			return 0;
-		abe->pdm_vib_status = 1;
-	}
 	abe_clean_temporary_buffers(id);
 	if (id == PDM_UL_PORT) {
 		/* initializes the ABE ATC descriptors in DMEM - MCPDM_UL */
@@ -947,24 +905,26 @@ int abe_enable_data_transfer(u32 id)
 		abe_init_io_tasks(DMIC_PORT, &format, protocol);
 	}
 	if (id == VX_UL_PORT) {
-		if (abe_port[VX_DL_PORT].status == OMAP_ABE_PORT_ACTIVITY_RUNNING) {
-			/* VX_DL port already started, hence no need to 
-				initialize ASRC */
-		} else {
-			/* Init VX_UL ASRC & VX_DL ASRC and enable its adaptation */
+		if (abe_port[VX_DL_PORT].status !=
+			OMAP_ABE_PORT_ACTIVITY_RUNNING) {
+			/*
+			 * Init VX_UL ASRC & VX_DL ASRC
+			 * and enable its adaptation
+			 */
 			abe_init_asrc_vx_ul(-250);
 			abe_init_asrc_vx_dl(250);
 		}
 	}
 	if (id == VX_DL_PORT) {
-		if (abe_port[VX_UL_PORT].status == OMAP_ABE_PORT_ACTIVITY_RUNNING) {
-			/* VX_UL port already started, hence no need to 
-				initialize ASRC */
-		} else {
-			/* Init VX_UL ASRC & VX_DL ASRC and enable its adaptation */
+		if (abe_port[VX_UL_PORT].status !=
+			OMAP_ABE_PORT_ACTIVITY_RUNNING) {
+			/*
+			 * Init VX_UL ASRC & VX_DL ASRC and
+			 * enable its adaptation
+			 */
 			abe_init_asrc_vx_ul(-250);
-		abe_init_asrc_vx_dl(250);
-	}
+			abe_init_asrc_vx_dl(250);
+		}
 	}
 	/* local host variable status= "port is running" */
 	abe_port[id].status = OMAP_ABE_PORT_ACTIVITY_RUNNING;
@@ -989,7 +949,7 @@ EXPORT_SYMBOL(abe_enable_data_transfer);
  *	CBPr registers of AESS.
  */
 int abe_connect_cbpr_dmareq_port(u32 id, abe_data_format_t *f, u32 d,
-					   abe_dma_t *returned_dma_t)
+				   abe_dma_t *returned_dma_t)
 {
 	_log(id_connect_cbpr_dmareq_port, id, f->f, f->samp_format);
 	abe_port[id] = ((abe_port_t *) abe_port_init)[id];
@@ -1029,8 +989,8 @@ EXPORT_SYMBOL(abe_connect_cbpr_dmareq_port);
  * "s" bytes and switch to the "pong" buffer for a new buffer exchange.
  */
 int abe_connect_dmareq_ping_pong_port(u32 id, abe_data_format_t *f,
-						u32 d, u32 s,
-						abe_dma_t *returned_dma_t)
+					u32 d, u32 s,
+					abe_dma_t *returned_dma_t)
 {
 	abe_dma_t dma1;
 
@@ -1131,7 +1091,7 @@ EXPORT_SYMBOL(abe_connect_irq_ping_pong_port);
  * abe_write_port API.
  */
 int abe_connect_serial_port(u32 id, abe_data_format_t *f,
-				      u32 mcbsp_id)
+			      u32 mcbsp_id)
 {
 	u32 UC_NULL[] = { 0 };
 	u32 OPP;
@@ -1169,7 +1129,7 @@ EXPORT_SYMBOL(abe_connect_serial_port);
  * DMEM.
  */
 int abe_connect_slimbus_port(u32 id, abe_data_format_t *f,
-				       u32 sb_port1, u32 sb_port2)
+			       u32 sb_port1, u32 sb_port2)
 {
 	u32 UC_NULL[] = { 0 };
 	u32 OPP;
@@ -1375,21 +1335,6 @@ int abe_write_equalizer(u32 id, abe_equ_t *param)
 		/* three DMIC are clear at the same time DMIC0 DMIC1 DMIC2 */
 		eq_mem_len *= 3;
 		break;
-	case APS1:
-		eq_offset = C_APS_DL1_coeffs1_ADDR;
-		eq_mem = S_APS_IIRmem1_ADDR;
-		eq_mem_len = S_APS_IIRmem1_sizeof;
-		break;
-	case APS2L:
-		eq_offset = C_APS_DL2_L_coeffs1_ADDR;
-		eq_mem = S_APS_M_IIRmem2_ADDR;
-		eq_mem_len = S_APS_M_IIRmem2_sizeof;
-		break;
-	case APS2R:
-		eq_offset = C_APS_DL2_R_coeffs1_ADDR;
-		eq_mem = S_APS_M_IIRmem2_ADDR;
-		eq_mem_len = S_APS_M_IIRmem2_sizeof;
-		break;
 	}
 	length = param->equ_length;
 	src = (u32 *) ((param->coef).type1);
@@ -1475,28 +1420,28 @@ int abe_write_asrc(u32 port, s32 dppm)
 		alpha_params[2] = (0x00100000 - (dtempvalue / 2)) << 2;
 	}
 	switch (port) {
-		/* asynchronous sample-rate-converter for the uplink voice path */
+	/* asynchronous sample-rate-converter for the uplink voice path */
 	case VX_DL_PORT:
 		drift_sign_addr = D_AsrcVars_DL_VX_ADDR + (1 * sizeof(s32));
 		alpha_params_addr = D_AsrcVars_DL_VX_ADDR + (3 * sizeof(s32));
 		break;
-		/* asynchronous sample-rate-converter for the downlink voice path */
+	/* asynchronous sample-rate-converter for the downlink voice path */
 	case VX_UL_PORT:
 		drift_sign_addr = D_AsrcVars_UL_VX_ADDR + (1 * sizeof(s32));
 		alpha_params_addr = D_AsrcVars_UL_VX_ADDR + (3 * sizeof(s32));
 		break;
-		/* asynchronous sample-rate-converter for the BT_UL path */
+	/* asynchronous sample-rate-converter for the BT_UL path */
 	case BT_VX_UL_PORT:
 		drift_sign_addr = D_AsrcVars_BT_UL_ADDR + (1 * sizeof(s32));
 		alpha_params_addr = D_AsrcVars_BT_UL_ADDR + (3 * sizeof(s32));
 		break;
-		/* asynchronous sample-rate-converter for the BT_DL path */
+	/* asynchronous sample-rate-converter for the BT_DL path */
 	case BT_VX_DL_PORT:
 		drift_sign_addr = D_AsrcVars_BT_DL_ADDR + (1 * sizeof(s32));
 		alpha_params_addr = D_AsrcVars_BT_DL_ADDR + (3 * sizeof(s32));
 		break;
 	default:
-		/* asynchronous sample-rate-converter for the MM_EXT_IN path */
+	/* asynchronous sample-rate-converter for the MM_EXT_IN path */
 	case MM_EXT_IN_PORT:
 		drift_sign_addr = D_AsrcVars_MM_EXT_IN_ADDR + (1 * sizeof(s32));
 		alpha_params_addr =
@@ -1561,11 +1506,11 @@ int abe_disable_gain(u32 id, u32 p)
 	ramp = abe->desired_ramp_delay_ms[mixer_offset + p];
 	f_g = GAIN_MUTE;
 	if (!(abe->muted_gains_indicator[mixer_offset + p] & 0x02)) {
- 		/* Check if we are in mute */
+		/* Check if we are in mute */
 		if (!(abe->muted_gains_indicator[mixer_offset + p] & 0x01)) {
 			abe->muted_gains_decibel[mixer_offset + p] =
 				abe->desired_gains_decibel[mixer_offset + p];
-		/* mute the gain */
+			/* mute the gain */
 			abe_write_gain(id, f_g, ramp, p);
 		}
 		abe->muted_gains_indicator[mixer_offset + p] |= 0x02;
@@ -1746,7 +1691,9 @@ int abe_write_gain(u32 id, s32 f_g, u32 ramp, u32 p)
 	}
 	ramp = maximum(minimum(RAMP_MAXLENGTH, ramp), RAMP_MINLENGTH);
 	/* ramp data should be interpolated in the table instead */
-	ramp_index = 8;
+	ramp_index = 3;
+	if ((RAMP_2MS <= ramp) && (ramp < RAMP_5MS))
+		ramp_index = 8;
 	if ((RAMP_5MS <= ramp) && (ramp < RAMP_50MS))
 		ramp_index = 24;
 	if ((RAMP_50MS <= ramp) && (ramp < RAMP_500MS))
@@ -1809,7 +1756,7 @@ int abe_read_gain(u32 id, u32 *f_g, u32 p)
 	u32 mixer_target, mixer_offset, i;
 
 	_log(id_read_gain, id, (u32) f_g, p);
-		abe_gain_offset(id, &mixer_offset);
+	abe_gain_offset(id, &mixer_offset);
 	/* SMEM word32 address */
 	mixer_target = (S_GTarget1_ADDR << 1);
 	mixer_target += mixer_offset;
@@ -1817,17 +1764,17 @@ int abe_read_gain(u32 id, u32 *f_g, u32 p)
 	/* translate coef address in Bytes */
 	mixer_target <<= 2;
 	if (!abe->muted_gains_indicator[mixer_offset + p]) {
-	/* load the S_G_Target SMEM table */
-	abe_block_copy(COPY_FROM_ABE_TO_HOST, ABE_SMEM, mixer_target,
-		       (u32 *) f_g, sizeof(*f_g));
-	for (i = 0; i < sizeof_db2lin_table; i++) {
-		if (abe_db2lin_table[i] == *f_g)
-			goto found;
-	}
-	*f_g = 0;
-	return -1;
-      found:
-	*f_g = (i * 100) + min_mdb;
+		/* load the S_G_Target SMEM table */
+		abe_block_copy(COPY_FROM_ABE_TO_HOST, ABE_SMEM, mixer_target,
+			       (u32 *) f_g, sizeof(*f_g));
+		for (i = 0; i < sizeof_db2lin_table; i++) {
+				if (abe_db2lin_table[i] == *f_g)
+				goto found;
+		}
+		*f_g = 0;
+		return -1;
+	      found:
+		*f_g = (i * 100) + min_mdb;
 	} else {
 		/* update muted gain with new value */
 		*f_g = abe->muted_gains_decibel[mixer_offset + p];
@@ -1860,6 +1807,7 @@ EXPORT_SYMBOL(abe_read_mixer);
 /**
  * abe_mono_mixer
  * @id: name of the mixer (MIXDL1 or MIXDL2)
+ * on_off: enable\disable flag
  *
  * This API Programs DL1Mixer or DL2Mixer to output mono data
  * on both left and right data paths.
@@ -1880,7 +1828,6 @@ int abe_mono_mixer(u32 id, u32 on_off)
 		else
 			abe->MultiFrame[TASK_DL1Mixer_SLT][TASK_DL1Mixer_IDX] =
 				ABE_TASK_ID(C_ABE_FW_TASK_DL1Mixer);
-
 		break;
 	case MIXDL2:
 		if (on_off)
@@ -1890,12 +1837,21 @@ int abe_mono_mixer(u32 id, u32 on_off)
 			abe->MultiFrame[TASK_DL2Mixer_SLT][TASK_DL2Mixer_IDX] =
 				ABE_TASK_ID(C_ABE_FW_TASK_DL2Mixer);
 		break;
+	case MIXAUDUL:
+		if (on_off)
+			abe->MultiFrame[12][4] =
+				ABE_TASK_ID(C_ABE_FW_TASK_ULMixer_dual_mono);
+		else
+			abe->MultiFrame[12][4] =
+				ABE_TASK_ID(C_ABE_FW_TASK_ULMixer);
+		break;
 	default:
 		break;
 	}
 
 	abe_block_copy(COPY_FROM_HOST_TO_ABE, ABE_DMEM, D_multiFrame_ADDR,
-				(u32 *) abe->MultiFrame, sizeof(abe->MultiFrame));
+				(u32 *) abe->MultiFrame,
+				sizeof(abe->MultiFrame));
 	return 0;
 }
 EXPORT_SYMBOL(abe_mono_mixer);
@@ -2058,12 +2014,6 @@ int abe_enable_test_pattern(u32 smem_id, u32 on_off)
 		task_patch = C_ABE_FW_TASK_MM_SPLIT;
 		idx_patch = 1;
 		break;
-	case DBG_PATCH_DL2_EQ:
-		dbg_on = DBG_48K_PATTERN_labelID;
-		dbg_off = DL2_EQ_labelID;
-		task_patch = C_ABE_FW_TASK_DL2_APS_SPLIT;
-		idx_patch = 1;
-		break;
 	case DBG_PATCH_VIBRA:
 		dbg_on = DBG_48K_PATTERN_labelID;
 		dbg_off = VIBRA_labelID;
@@ -2074,12 +2024,6 @@ int abe_enable_test_pattern(u32 smem_id, u32 on_off)
 		dbg_on = DBG_48K_PATTERN_labelID;
 		dbg_off = MM_EXT_IN_labelID;
 		task_patch = C_ABE_FW_TASK_MM_EXT_IN_SPLIT;
-		idx_patch = 1;
-		break;
-	case DBG_PATCH_MIC4:
-		dbg_on = DBG_48K_PATTERN_labelID;
-		dbg_off = MIC4_labelID;
-		task_patch = C_ABE_FW_TASK_MIC4_SPLIT;
 		idx_patch = 1;
 		break;
 	case DBG_PATCH_MM_DL_MIXDL1:
@@ -2143,7 +2087,7 @@ int abe_check_activity(void)
 
 	for (i = 0; i < (LAST_PORT_ID - 1); i++) {
 		if (abe_port[abe_port_priority[i]].status ==
-		    OMAP_ABE_PORT_ACTIVITY_RUNNING)
+				OMAP_ABE_PORT_ACTIVITY_RUNNING)
 			break;
 	}
 	if (i < (LAST_PORT_ID - 1))
@@ -2170,3 +2114,190 @@ int abe_init_mem(void __iomem *_io_base)
 	return 0;
 }
 EXPORT_SYMBOL(abe_init_mem);
+
+/**
+ * abe_write_pdmdl_offset - write the desired offset on the DL1/DL2 paths
+ *
+ * Parameters:
+ *   path: 1 for the DL1 ABE path, 2 for the DL2 ABE path
+ *   offset_left: integer value that will be added on all PDM left samples
+ *   offset_right: integer value that will be added on all PDM right samples
+ *
+ */
+void abe_write_pdmdl_offset(u32 path, u32 offset_left, u32 offset_right)
+{
+	switch (path) {
+	case 1:
+		abe_block_copy(COPY_FROM_HOST_TO_ABE, ABE_SMEM,
+			4 + (S_DC_HS_ADDR << 3), &offset_left, sizeof(u32));
+			abe_block_copy(COPY_FROM_HOST_TO_ABE, ABE_SMEM,
+			(S_DC_HS_ADDR << 3), &offset_right, sizeof(u32));
+		break;
+	case 2:
+		abe_block_copy(COPY_FROM_HOST_TO_ABE, ABE_SMEM,
+			4 + (S_DC_HF_ADDR << 3), &offset_left, sizeof(u32));
+			abe_block_copy(COPY_FROM_HOST_TO_ABE, ABE_SMEM,
+			(S_DC_HF_ADDR << 3), &offset_right, sizeof(u32));
+		break;
+	default:
+		break;
+	}
+}
+EXPORT_SYMBOL(abe_write_pdmdl_offset);
+
+/**
+ * abe_reset_vx_ul_src_filters - reset VX-UL port SRC filters
+ *
+ * it is assumed that filters are located in SMEM
+ */
+void abe_reset_vx_ul_src_filters(void)
+{
+	if (abe_port[VX_UL_PORT].format.f == 8000) {
+		abe_reset_filter(S_VX_UL_48_8_LP_data_ADDR,
+				S_VX_UL_48_8_LP_data_sizeof);
+		abe_reset_filter(S_VX_UL_48_8_HP_data_ADDR,
+				S_VX_UL_48_8_HP_data_sizeof);
+	} else if (abe_port[VX_UL_PORT].format.f == 16000) {
+		abe_reset_filter(S_VX_UL_48_16_LP_data_ADDR,
+				S_VX_UL_48_16_LP_data_sizeof);
+		abe_reset_filter(S_VX_UL_48_16_HP_data_ADDR,
+				S_VX_UL_48_16_HP_data_sizeof);
+	}
+}
+EXPORT_SYMBOL(abe_reset_vx_ul_src_filters);
+
+/**
+ * abe_reset_mic_ul_src_filters - reset AMIC or DMICs or BT UL SRC filters
+ *
+ * it is assumed that filters are located in SMEM
+ */
+void abe_reset_mic_ul_src_filters(void)
+{
+	u16 vx[NBROUTE_UL];
+
+	abe_block_copy(COPY_FROM_ABE_TO_HOST, ABE_DMEM,
+			D_aUplinkRouting_ADDR,
+			(u32 *) vx, D_aUplinkRouting_sizeof);
+
+	switch (vx[12]) {
+	case ZERO_labelID:
+		/* no MIC used */
+		return;
+	case DMIC1_L_labelID:
+	case DMIC1_R_labelID:
+		/* DMIC0 used */
+		abe_reset_filter(S_DMIC0_96_48_data_ADDR,
+				S_DMIC0_96_48_data_sizeof);
+		break;
+	case DMIC2_L_labelID:
+	case DMIC2_R_labelID:
+		/* DMIC1 used */
+		abe_reset_filter(S_DMIC1_96_48_data_ADDR,
+				S_DMIC1_96_48_data_sizeof);
+		break;
+	case DMIC3_L_labelID:
+	case DMIC3_R_labelID:
+		/* DMIC2 used */
+		abe_reset_filter(S_DMIC2_96_48_data_ADDR,
+				S_DMIC2_96_48_data_sizeof);
+		break;
+	case BT_UL_L_labelID:
+	case BT_UL_R_labelID:
+		/* BT MIC used */
+		if (abe_port[BT_VX_UL_PORT].format.f == 8000) {
+			abe_reset_filter(S_BT_UL_8_48_HP_data_ADDR,
+					S_BT_UL_8_48_HP_data_sizeof);
+			abe_reset_filter(S_BT_UL_8_48_OSR_LP_data_ADDR,
+					S_BT_UL_8_48_OSR_LP_data_sizeof);
+			abe_reset_filter(S_BT_UL_8_48_LP_data_ADDR,
+					S_BT_UL_8_48_LP_data_sizeof);
+		} else if (abe_port[BT_VX_UL_PORT].format.f == 16000) {
+			abe_reset_filter(S_BT_UL_16_48_HP_data_ADDR,
+					S_BT_UL_16_48_HP_data_sizeof);
+			abe_reset_filter(S_BT_UL_16_48_LP_data_ADDR,
+					S_BT_UL_16_48_LP_data_sizeof);
+		}
+		break;
+	case AMIC_L_labelID:
+	case AMIC_R_labelID:
+		/* AMIC used */
+		abe_reset_filter(S_AMIC_96_48_data_ADDR,
+				S_AMIC_96_48_data_sizeof);
+		break;
+	default:
+		return;
+	}
+}
+EXPORT_SYMBOL(abe_reset_mic_ul_src_filters);
+
+/**
+ * abe_reset_vx_dl_src_filters - reset VX-DL port SRC filters
+ *
+ * it is assumed that filters are located in SMEM
+ */
+void abe_reset_vx_dl_src_filters(void)
+{
+	if (abe_port[VX_DL_PORT].format.f == 8000) {
+		abe_reset_filter(S_VX_DL_8_48_HP_data_ADDR,
+				S_VX_DL_8_48_HP_data_sizeof);
+		abe_reset_filter(S_VX_DL_8_48_OSR_LP_data_ADDR,
+				S_VX_DL_8_48_OSR_LP_data_sizeof);
+		abe_reset_filter(S_VX_DL_8_48_LP_data_ADDR,
+				S_VX_DL_8_48_LP_data_sizeof);
+	} else if (abe_port[VX_DL_PORT].format.f == 16000) {
+		abe_reset_filter(S_VX_DL_16_48_HP_data_ADDR,
+				S_VX_DL_16_48_HP_data_sizeof);
+		abe_reset_filter(S_VX_DL_16_48_LP_data_ADDR,
+				S_VX_DL_16_48_LP_data_sizeof);
+	}
+}
+EXPORT_SYMBOL(abe_reset_vx_dl_src_filters);
+
+/**
+ * abe_reset_dl1_src_filters - reset DL1 path filters
+ *
+ * it is assumed that filters are located in SMEM
+ */
+void abe_reset_dl1_src_filters(void)
+{
+	abe_reset_filter(S_DL1_M_EQ_data_ADDR,
+			S_DL1_M_EQ_data_sizeof);
+	abe_reset_filter(S_EARP_48_96_LP_data_ADDR,
+			S_EARP_48_96_LP_data_sizeof);
+}
+EXPORT_SYMBOL(abe_reset_dl1_src_filters);
+
+/**
+ * abe_reset_dl2_src_filters - reset DL2 path filters
+ *
+ * it is assumed that filters are located in SMEM
+ */
+void abe_reset_dl2_src_filters(void)
+{
+	abe_reset_filter(S_DL2_M_LR_EQ_data_ADDR,
+			S_DL2_M_LR_EQ_data_sizeof);
+	abe_reset_filter(S_IHF_48_96_LP_data_ADDR,
+			S_IHF_48_96_LP_data_sizeof);
+}
+EXPORT_SYMBOL(abe_reset_dl2_src_filters);
+
+/**
+ * abe_reset_bt_dl_src_filters - reset bluetooth DL SRC path filters
+ *
+ * it is assumed that filters are located in SMEM
+ */
+void abe_reset_bt_dl_src_filters(void)
+{
+	if (abe_port[BT_VX_DL_PORT].format.f == 8000) {
+		abe_reset_filter(S_BT_DL_48_8_LP_data_ADDR,
+				S_BT_DL_48_8_LP_data_sizeof);
+		abe_reset_filter(S_BT_DL_48_8_HP_data_ADDR,
+				S_BT_DL_48_8_HP_data_sizeof);
+	} else if (abe_port[BT_VX_DL_PORT].format.f == 16000) {
+		abe_reset_filter(S_BT_DL_48_16_LP_data_ADDR,
+				S_BT_DL_48_16_LP_data_sizeof);
+		abe_reset_filter(S_BT_DL_48_16_HP_data_ADDR,
+				S_BT_DL_48_16_HP_data_sizeof);
+	}
+}
+EXPORT_SYMBOL(abe_reset_bt_dl_src_filters);
