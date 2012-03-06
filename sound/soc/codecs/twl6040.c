@@ -445,6 +445,9 @@ static int twl6040_i2c_read(u8 reg, u8* value)
 	return ret;
 }
 
+#define TWL6040_HMICENA                        0x01
+#define TWL6040_HKEN                           0x01
+
 static void twl6040_hs_jack_report(struct snd_soc_codec *codec,
 				struct snd_soc_jack *jack, int report)
 {
@@ -460,10 +463,8 @@ static void twl6040_hs_jack_report(struct snd_soc_codec *codec,
 	else
 		state = WIRED_HEADSET;
 
-	#if 0
 	twl6040_i2c_read(TWL6040_REG_STATUS, &hkcomp);
 	hkcomp &= 0x01; //TWL6040_HKCOMP;
-	#endif
 
 	if (state) {
 		if (hkcomp) {
@@ -477,6 +478,22 @@ static void twl6040_hs_jack_report(struct snd_soc_codec *codec,
 		status = 0;
 	}
 	mutex_unlock(&priv->mutex);
+
+	u8 hsbias = twl6040_read_reg_cache(codec, TWL6040_REG_AMICBCTL);
+	u8 hkctl1 = twl6040_read_reg_cache(codec, TWL6040_REG_HKCTL1);
+	if (state) {
+		hsbias |= TWL6040_HMICENA;
+		if (status == WIRED_HEADSET)
+			hkctl1 |= TWL6040_HKEN;
+		else
+			hkctl1 &= ~TWL6040_HKEN;
+	} else {
+		hsbias &= ~TWL6040_HMICENA;
+		hkctl1 &= ~TWL6040_HKEN;
+	}
+
+	twl6040_write(codec, TWL6040_REG_AMICBCTL, hsbias);
+	twl6040_write(codec, TWL6040_REG_HKCTL1, hkctl1);
 
 	snd_soc_jack_report(jack, status, report);
 	switch_set_state(&priv->hs_jack.sdev, state);
