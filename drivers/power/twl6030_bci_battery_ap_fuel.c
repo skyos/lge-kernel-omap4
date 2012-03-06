@@ -2427,7 +2427,7 @@ static int twl6030_bci_battery_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_START_COND:
 		//FIXME: write to nv data.
 		val->intval = (int)start_cond;
-		printk(KERN_ERR	"p_di->start_cond = %02X ", (char)val->intval);
+		//printk(KERN_ERR	"p_di->start_cond = %02X ", (char)val->intval);
 		break;
 
 	default:
