@@ -231,7 +231,7 @@ ignore_char:
 	 * narios would handle these wake-locks.
 	 */
 	if (up->pdev->id == UART2)
-		wake_lock_timeout(&uart_lock, 1*HZ);
+		wake_lock_timeout(&uart_lock, 3*HZ); 
 	spin_unlock(&up->port.lock);
 	tty_flip_buffer_push(tty);
 	spin_lock(&up->port.lock);
@@ -262,7 +262,7 @@ static void transmit_chars(struct uart_omap_port *up)
 			 * which require these.
 			 */
 			if (up->pdev->id == UART2)
-				wake_lock_timeout(&uart_lock, 1*HZ);
+				wake_lock_timeout(&uart_lock, 3*HZ); 
 			break;
 		}
 	} while (--count > 0);
@@ -389,8 +389,14 @@ static inline irqreturn_t serial_omap_irq(int irq, void *dev_id)
 
 //	if (omap_is_console_port(&up->port))
 //		wake_lock_timeout(&uart_lock, 5 * HZ);
-	if (omap_is_console_port(&up->port))
+	if (omap_is_console_port(&up->port)){
+		if((&up->pdev->id) == UART2)
+		{
+ 			wake_lock_timeout(&uart_lock, 3 * HZ);
+		}
+		else
 		wake_lock_timeout(&uart_lock, 2.5 * HZ);
+	}	
 
 #ifdef CONFIG_PM
 	/*
@@ -1136,6 +1142,11 @@ static int serial_omap_resume(struct platform_device *dev)
 //	if (omap_is_console_port(&up->port))
 //		wake_lock_timeout(&uart_lock, 5 * HZ);
 	if (omap_is_console_port(&up->port))
+		if((&up->pdev->id) == UART2)
+		{
+			wake_lock_timeout(&uart_lock, 3 * HZ);
+		}	
+		else	
 		wake_lock_timeout(&uart_lock, 2.5 * HZ);
 
 	if (up)
@@ -1247,7 +1258,7 @@ static int serial_omap_start_rxdma(struct uart_omap_port *up)
 	up->uart_dma.rx_dma_used = true;
 
 	if (up->pdev->id == UART2)
-		wake_lock_timeout(&uart_lock, 1*HZ);
+		wake_lock_timeout(&uart_lock, 3*HZ); 
 
 	return ret;
 }
@@ -1304,7 +1315,7 @@ static void uart_tx_dma_callback(int lch, u16 ch_status, void *data)
 		up->uart_dma.tx_dma_used = false;
 		spin_unlock(&(up->uart_dma.tx_lock));
 		if (up->pdev->id == UART2)
-			wake_lock_timeout(&uart_lock, 1*HZ);
+			wake_lock_timeout(&uart_lock, 3*HZ); 
 	} else {
 
 #ifdef CONFIG_PM

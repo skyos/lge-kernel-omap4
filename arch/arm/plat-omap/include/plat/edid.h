@@ -123,7 +123,11 @@
 #define HDMI_EDID_EX_VIDEO_1920x1080p_30Hz_16_9	34
 
 #define OMAP_HDMI_TIMINGS_NB			37
+#if defined (CONFIG_MACH_LGE_CX2)
+#define OMAP_HDMI_TIMINGS_VESA_START		16
+#else
 #define OMAP_HDMI_TIMINGS_VESA_START		15
+#endif
 
 #ifdef __cplusplus
 extern "C" {

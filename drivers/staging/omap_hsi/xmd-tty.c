@@ -213,11 +213,9 @@ static void xmd_ch_tty_close(struct tty_struct *tty, struct file *f)
 #define XMD_TTY_AT_MAX_WRITE_SIZE	2000
 
 /* VT data */
-#define XMD_TTY_VT_DATA_CHANNEL		6
 #define XMD_TTY_VT_MAX_WRITE_SIZE	1024
 
 /* CIQ data */
-#define XMD_TTY_CIQ_CHANNEL			11
 #define XMD_TTY_CIQ_MAX_WRITE_SIZE	1024*8
 
 static int xmd_ch_tty_write(

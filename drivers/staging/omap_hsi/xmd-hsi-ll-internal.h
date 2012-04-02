@@ -233,6 +233,11 @@ typedef struct hsi_ll_tx_ch {
 #if defined (HSI_LL_ENABLE_TX_RETRY_WQ)
 	struct work_struct retry_work;
 #endif
+#if defined (MIPI_HSI_CHECK_CP_RX_INFO)
+	wait_queue_head_t cp_info_wait;
+	int cp_info_complete;
+	unsigned int cp_state;
+#endif
 } ll_tx_ch;
 
 /* struct hsi_ll_rx_ch - RX channel structure
@@ -248,8 +253,11 @@ typedef struct hsi_ll_rx_ch {
 	unsigned int size;
 	unsigned int close_req;
 	struct timer_list timer_id;
-#if 1	
+#if defined (MIPI_HSI_CP_OPEN_CONN_NAK_FOR_RETRY)
 	unsigned int nak_sent;
+#endif
+#if defined (MIPI_HSI_CP_OPEN_CONN_ID_FOR_RETRY)
+	unsigned int open_id; /* 0 ~ 15 */
 #endif
 } ll_rx_ch;
 

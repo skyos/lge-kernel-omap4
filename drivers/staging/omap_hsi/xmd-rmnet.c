@@ -33,6 +33,7 @@
 #include <linux/ipv6.h>
 #include <linux/ip.h>
 #include <asm/byteorder.h>
+#include <linux/rtnetlink.h>
 
 #include "xmd-ch.h"
 
@@ -46,7 +47,7 @@
 /* #define RMNET_CRITICAL_DEBUG */
 #define RMNET_ERR
 
-#define RMNET_WD_TMO		400
+#define RMNET_WD_TMO		5 * HZ
 #define RMNET_DATAT_SIZE   	ETH_DATA_LEN /* This value should be changed according to android MTU setting*/
 #define RMNET_MTU_SIZE		( ETH_HLEN + RMNET_DATAT_SIZE )
 #define MAX_PART_PKT_SIZE   2500
@@ -404,7 +405,7 @@ static int xmd_trans_packet(
 	}
 
 #if defined (RMNET_CHANGE_MTU)
-	if (sz > p->mtu)
+	if (sz > dev->mtu)
 #else
 	if (sz > RMNET_MTU_SIZE)
 #endif
@@ -595,7 +596,7 @@ static void xmd_net_notify(int chno)
 			return;
 		}
 
-		if(sz > RMNET_DATAT_SIZE) {
+		if((sz <= 0)||(sz > RMNET_DATAT_SIZE)) {
 #if defined (RMNET_ERR)
 			printk("\n%s (line %d) Invalid hdr len(%d)\n", __func__, __LINE__, sz);
 			xmd_net_dump("xmd_net_notify", past_packet[info->id].buf, past_packet[info->id].size);
@@ -698,7 +699,7 @@ static void xmd_net_notify(int chno)
 			return;
 		}
 
-		if(sz > RMNET_DATAT_SIZE) {
+		if((sz <= 0)||(sz > RMNET_DATAT_SIZE)) {
 #if defined (RMNET_ERR)
 			printk("\n%s (line %d) Invalid hdr len(%d)\n", __func__, __LINE__, sz);
 			xmd_net_dump("xmd_net_notify", past_packet[info->id].buf, past_packet[info->id].size);
@@ -852,7 +853,7 @@ static void xmd_net_notify(int chno)
 			break;
 		}
 
-		if(data_sz > RMNET_DATAT_SIZE) {
+		if((data_sz <= 0)||(data_sz > RMNET_DATAT_SIZE)) {
 #if defined (RMNET_ERR)
 			printk("\n%s (line %d) Invalid hdr len(%d)\n", __func__, __LINE__, data_sz);
 			xmd_net_dump("xmd_net_notify", buf, tot_sz);
@@ -948,6 +949,49 @@ static int rmnet_open(struct net_device *dev)
 	return 0;
 }
 
+void rmnet_sync_down_for_recovery(void)
+{
+	int ch;
+	struct net_device *dev = NULL;
+	struct rmnet_private *p = NULL;
+	struct xmd_ch_info *info = NULL;
+
+	rtnl_lock();
+
+	for (ch = 0; ch < MAX_SMD_NET; ch++) {
+
+		dev = (struct net_device *)rmnet_channels[ch].priv;
+
+		if (dev == NULL)
+			continue;
+
+		if (dev->flags & IFF_UP) {
+			
+			p = netdev_priv(dev);
+			if (!p) {
+#if defined (RMNET_ERR)
+				printk("\n%s (line %d) No netdev_priv\n", __func__, __LINE__);
+#endif
+				continue;
+			}
+
+			info = p->ch;
+			if (!info) {
+#if defined (RMNET_ERR)
+				printk("\n%s (line %d) No xmd_ch_info\n", __func__, __LINE__);
+#endif
+				continue;
+			}
+
+#if defined (RMNET_ERR)
+			printk("\n%s (line %d) dev_close rmnet%d IFF_UP\n", __func__, __LINE__, ch);
+#endif
+			dev_close(dev);
+		}
+	}
+
+	rtnl_unlock();
+}
 static int rmnet_stop(struct net_device *dev)
 {
 	struct rmnet_private *p = netdev_priv(dev);
@@ -1151,6 +1195,7 @@ static struct net_device_stats *rmnet_get_stats(struct net_device *dev)
 #if defined (RMNET_ERR)
 		printk("\n%s (line %d) No netdev_priv\n", __func__, __LINE__);
 #endif
+        return NULL;
 	}
 
 	return &p->stats;
@@ -1187,7 +1232,9 @@ static void rmnet_tx_timeout(struct net_device *dev)
 
 	for(chno=13; chno < 16; chno++) {
 		if(rmnet_ch_block_info[chno].dev == dev) {
+#if 0
 			rmnet_restart_queue(chno);
+#endif
 			printk("rmnet_tx_timeout()ch %d \n", chno);
 			break;
 		}

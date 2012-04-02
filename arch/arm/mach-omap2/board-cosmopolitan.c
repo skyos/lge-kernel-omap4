@@ -104,6 +104,9 @@
 #define LED_TOGGLE3		0x92
 
 #ifdef CONFIG_MACH_LGE_COSMO_DOMASTIC
+#if defined (CONFIG_MACH_LGE_CX2)
+#define LGE_FW_TDMB_TCC 
+#endif
 #define LGE_FW_TDMB
 #endif // CONFIG_MACH_LGE_COSMO_DOMASTIC
 
@@ -164,7 +167,9 @@ static int omap_keymap[] = {
 	
 	KEY(1, 0, KEY_HOME),
 	KEY(1, 1, KEY_3D),
-
+#if defined (CONFIG_MACH_LGE_COSMO_DOMASTIC)
+	KEY(2, 1, KEY_TESTMODE_UNLOCK),
+#endif
 	0,
 };
 
@@ -1599,19 +1604,11 @@ static struct mpu3050_platform_data mpu3050_data = {
 		.adapt_num	 = 4,
 		.bus		 = EXT_SLAVE_BUS_SECONDARY,
 		.address	 = 0x0F,
-#if defined (CONFIG_MACH_LGE_CX2_REV_A) 
-		.orientation = {
-			-1, 0, 0, 
-			0, -1, 0, 
-			0,  0, 1
-		},
-#else
 		.orientation = {
 			1, 0, 0,  
 			0, 1, 0,  
 			0, 0, 1
 		},
-#endif
 	},
 	.compass = {
 #if !defined(CONFIG_MPU_SENSORS_MPU3050_MODULE)
@@ -1620,10 +1617,11 @@ static struct mpu3050_platform_data mpu3050_data = {
 		.adapt_num  = 4,
 		.bus         = EXT_SLAVE_BUS_PRIMARY,
 		.address     = 0x0E,
-#if defined (CONFIG_MACH_LGE_CX2_REV_A) 
+
+#if defined (CONFIG_MACH_LGE_CX2_REV_A) && !defined(CONFIG_MACH_LGE_COSMO_DOMASTIC)
 		.orientation = {
-			0,  1,  0,
 			1,  0,  0,
+			0,  1,  0,
 			0,  0,  1
 		},
 #else
@@ -1646,16 +1644,20 @@ static struct pn544_i2c_platform_data nfc_pdata = {
 	.firm_gpio = NFC_GPIO_FRIM,
 };
 
-#define GPIO_MHL_I2C_SCL	8
-#define GPIO_MHL_I2C_SDA	182
-
+#if defined (CONFIG_MACH_LGE_CX2_REV_A) 
 #define GPIO_NFC_I2C_SCL	174
 #define GPIO_NFC_I2C_SDA	173
+#endif
+
+#define GPIO_MHL_I2C_SCL	8
+#define GPIO_MHL_I2C_SDA	182
 
 
 enum {
 	MHL_GPIO_I2C = 0,
+#if defined (CONFIG_MACH_LGE_CX2_REV_A) 
 	NFC_GPIO_I2C = 1,
+#endif
 	MAX_GPIO_I2C,
 };
 #define I2C_ID(x) (x + 5)
@@ -1668,6 +1670,7 @@ static struct i2c_gpio_platform_data i2c_gpio_data[] = {
 		.scl_is_open_drain = 0,
 		.udelay = 2,
 	},
+#if defined (CONFIG_MACH_LGE_CX2_REV_A) 
 	{
 		.sda_pin = GPIO_NFC_I2C_SDA,
 		.scl_pin = GPIO_NFC_I2C_SCL, 
@@ -1675,7 +1678,7 @@ static struct i2c_gpio_platform_data i2c_gpio_data[] = {
 		.scl_is_open_drain = 0,
 		.udelay = 2,
 	},
-
+#endif
 };
 
 //static struct platform_device *__initdata i2c_gpio_device[MAX_GPIO_I2C] = {
@@ -1685,12 +1688,13 @@ static struct platform_device i2c_gpio_device[] = {
 		.id = I2C_ID(MHL_GPIO_I2C),
 		.dev.platform_data = &i2c_gpio_data[MHL_GPIO_I2C],
 	},
+#if defined (CONFIG_MACH_LGE_CX2_REV_A) 
 	{
 		.name = "i2c-gpio",
 		.id = I2C_ID(NFC_GPIO_I2C),
 		.dev.platform_data = &i2c_gpio_data[NFC_GPIO_I2C],
 	},
-
+#endif
 };
 
 //static struct i2c_board_info __initdata i2c_gpio_info_mhl[] = {
@@ -1709,6 +1713,7 @@ struct i2c_board_info i2c_gpio_info_mhl[] = {
 	},
 };
 
+#if defined (CONFIG_MACH_LGE_CX2_REV_A) 
 struct i2c_board_info i2c_gpio_info_nfc[] = {
 	{
 		I2C_BOARD_INFO("pn544", 0x28),
@@ -1718,7 +1723,7 @@ struct i2c_board_info i2c_gpio_info_nfc[] = {
 
 	},
 };
-
+#endif
 
 static void __init lge_add_i2c_gpio_device(void)
 {
@@ -1729,16 +1734,19 @@ static void __init lge_add_i2c_gpio_device(void)
 		platform_device_register(&i2c_gpio_device[i]);
 	}
 	printk( "[MHL]i2c_register_board_info\n");
+#if defined (CONFIG_MACH_LGE_CX2_REV_A) 
 	printk( "[NFC]i2c_register_board_info\n");
+#endif
 
 	ret = i2c_register_board_info(I2C_ID(MHL_GPIO_I2C), i2c_gpio_info_mhl,
 				 ARRAY_SIZE(i2c_gpio_info_mhl));
 	printk( "[MHL]i2c_register_board_info ret:%d\n", ret);
+	
+#if defined (CONFIG_MACH_LGE_CX2_REV_A) 
 	ret = i2c_register_board_info(I2C_ID(NFC_GPIO_I2C), i2c_gpio_info_nfc,
 				 ARRAY_SIZE(i2c_gpio_info_nfc));
 	printk( "[NFC]i2c_register_board_info ret:%d\n", ret);
-
-
+#endif
 }
 
 int device_power_control(char* reg_id, int on){
@@ -1811,6 +1819,14 @@ static struct i2c_board_info __initdata sdp4430_i2c_2_boardinfo[] = {
 			I2C_BOARD_INFO(LM3530_I2C_NAME,  LM3530_I2C_ADDR),
 			.platform_data	=	&lm3530_pdata,
 		},
+#endif
+#if defined (CONFIG_MACH_LGE_CX2_REV_B) 
+	{
+		I2C_BOARD_INFO("pn544", NFC_I2C_SLAVE_ADDR),
+		.type = "pn544",
+		.irq = OMAP_GPIO_IRQ(NFC_GPIO_IRQ),
+		.platform_data = &nfc_pdata,
+	},
 #endif
 
 	{
@@ -2104,6 +2120,26 @@ void wlan_1283_config(void)
 #endif
 
 #ifdef LGE_FW_TDMB
+#ifdef LGE_FW_TDMB_TCC
+static struct omap2_mcspi_device_config tcc3170_mcspi_config = 
+{
+	.turbo_mode = 0,
+	.single_channel = 1,	/* 0: slave, 1: master */
+};
+
+static struct spi_board_info hub_tdmb_spi_board_info[] __initdata = 
+{
+	[0] = {
+	       .modalias 		= "tdmb_tcc3170",
+	       .bus_num 		= 1, /* MCSPI NUM */
+	       .chip_select 		= 0,
+	       .max_speed_hz 	= 24000*1000,
+	       .controller_data 	= &tcc3170_mcspi_config,
+	       .irq = OMAP_GPIO_IRQ(COSMO_TDMB_IRQ_GPIO),
+	       },
+};
+
+#else 
 static struct omap2_mcspi_device_config fc8050_mcspi_config = 
 {
 	.turbo_mode = 0,
@@ -2121,6 +2157,7 @@ static struct spi_board_info hub_tdmb_spi_board_info[] __initdata =
 	       .irq = OMAP_GPIO_IRQ(COSMO_TDMB_IRQ_GPIO),
 	       },
 };
+#endif 
 
 static void __init cosmo_tdmb_spi_init(void)
 {

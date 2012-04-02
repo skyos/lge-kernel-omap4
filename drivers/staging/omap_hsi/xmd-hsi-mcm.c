@@ -34,7 +34,8 @@
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/wakelock.h>
-#if 0 //defined(CONFIG_MACH_LGE_COSMOPOLITAN)
+
+#if defined(HSI_MCM_NOTIFY_TO_CHARGER)
 #include <linux/cosmo/charger_rt9524.h>
 #endif
 
@@ -76,8 +77,7 @@ static struct workqueue_struct *hsi_write_wq;
 static struct workqueue_struct *hsi_buf_retry_wq;
 #endif
 
-#if 0 //defined(CONFIG_MACH_LGE_COSMOPOLITAN)
-#define HSI_WRITE_TIMEOUT 	2*HZ
+#if defined(HSI_MCM_NOTIFY_TO_CHARGER)
 static unsigned int ifx_hsi_modem_alive = 1;
 #endif
 
@@ -190,6 +190,14 @@ static int hsi_ch_net_write(int chno, void *data, int len)
 	int n = 0;
 	int flag = 1;
 	int ret = 0;
+
+	if (!data) {
+#if MCM_DBG_ERR_LOG
+		printk("\nmcm: data is NULL.\n");
+#endif
+		return -EINVAL;
+	}
+
 #ifdef XMD_TX_MULTI_PACKET
 	if (d && hsi_channels[chno].write_queued == HSI_TRUE) {
 		if (d->being_used == HSI_FALSE && (d->size + len) < HSI_MEM_LARGE_BLOCK_SIZE) {
@@ -213,9 +221,12 @@ static int hsi_ch_net_write(int chno, void *data, int len)
 		flag = 1;
 	}
 
-	if (!buf || !data) {
+	if (!buf) {
 #if MCM_DBG_ERR_LOG
 		printk("\nmcm: Failed to alloc memory So Cannot transfer packet.\n");
+#endif
+#if 1
+		hsi_channels[chno].tx_blocked = 1;
 #endif
 		return -ENOMEM;
 	}
@@ -237,8 +248,17 @@ static int hsi_ch_net_write(int chno, void *data, int len)
 #endif
 			hsi_channels[chno].tx_blocked = 1;
 			hsi_mem_free(buf);
+#if 1
+			if (hsi_channels[chno].write_queued == HSI_TRUE) {
+#if MCM_DBG_LOG
+				printk("\nmcm: hsi_ch_net_write wq already in progress\n");
+#endif
+			}
+			else {
 			PREPARE_WORK(&hsi_channels[chno].write_work, hsi_write_work);
 			queue_work(hsi_write_wq, &hsi_channels[chno].write_work);
+			}
+#endif
 			ret = -EBUSY;
 		} else if (n == 1) {
 			PREPARE_WORK(&hsi_channels[chno].write_work, hsi_write_work);
@@ -250,13 +270,98 @@ static int hsi_ch_net_write(int chno, void *data, int len)
 	return ret;
 }
 
+#if defined(HSI_MCM_NOTIFY_TO_CHARGER)
+static void hsi_ch_notify_to_charger(int error)
+{
+	if(error == 0) { /* No error */
+		if(ifx_hsi_modem_alive == 0) {
+			set_modem_alive(1);
+			ifx_hsi_modem_alive = 1;
+#if MCM_DBG_LOG
+			printk("\nmcm:set_modem_alive on");
+#endif
+		}
+	}
+	else { /* -EREMOTEIO */
+			set_modem_alive(0);
+			ifx_hsi_modem_alive = 0;
+#if MCM_DBG_LOG
+			printk("\nmcm:set_modem_alive off");
+#endif
+	}
+}
+#endif
+
 /* RIL recovery : hsi_ch_tty_write loops  continuously if there is no operation */
-#define HSI_WRITE_TIMEOUT		(6 * HZ)
+#if defined(MIPI_HSI_TTY_WRITE_TIMEOUT_FEATURE) || defined(MIPI_HSI_NET_WRITE_TIMEOUT_FEATURE)
+#define HSI_WRITE_TIMEOUT		(12 * HZ)
+
+static int hsi_ch_write_timeout(int chno, void *buf)
+{
+	int err = 0, rc = 0;
+
+	rc = wait_event_timeout(hsi_channels[chno].write_wait,
+			hsi_channels[chno].write_happening == HSI_FALSE, HSI_WRITE_TIMEOUT);
+
+	if( hsi_mcm_state == HSI_MCM_STATE_ERR_RECOVERY) {
+#if MCM_DBG_LOG
+		printk("\nmcm:locking 1st mutex end for ch: %d\n", chno);
+#endif
+		return -EREMOTEIO;
+	}
+
+	if (rc == 0) { 
+		int ret = hsi_ll_check_channel(chno);
+
+		if(ret == -EPERM) {
+			err = -EREMOTEIO;
+			
+			hsi_channels[chno].write_happening = HSI_FALSE;
+			hsi_ll_reset_write_channel(chno);
+			hsi_mem_free(buf);
+#if MCM_DBG_ERR_LOG
+			printk("\nmcm: hsi_ll_check_channel - hsi_ch_write_timeout(...) failed\n");
+#endif
+		}
+		else if(ret == -EACCES){
+			hsi_channels[chno].write_happening = HSI_FALSE;
+			err = -EREMOTEIO;
+			
+#if MCM_DBG_ERR_LOG
+			printk("\nmcm:unlocking 1st mutex end for ch: %d\n", chno);
+#endif
+		}
+		else if(ret == -EBUSY){
+			wait_event(hsi_channels[chno].write_wait,
+				hsi_channels[chno].write_happening == HSI_FALSE);
+
+			err = 0;
+			
+#if MCM_DBG_LOG
+			printk("\nmcm:unlocking 2st mutex end for ch: %d\n", chno);
+#endif
+		}
+		else {
+			err = 0;
+#if MCM_DBG_LOG
+			printk("\nmcm:unlocking 3st mutex end for ch: %d\n", chno);
+#endif
+		}
+	}
+	else {
+#if MCM_DBG_LOG
+		printk("\nmcm:unlocking 4st mutex end for ch: %d\n", chno);
+#endif
+	}
+
+	return err;
+}
+#endif
 
 static int hsi_ch_tty_write(int chno, void *data, int len)
 {
 	void *buf = NULL;
-	int err, rc;
+	int err;
 
 	buf = hsi_mem_alloc(len);
 
@@ -280,33 +385,46 @@ static int hsi_ch_tty_write(int chno, void *data, int len)
 #endif
 
 		hsi_channels[chno].write_happening = HSI_FALSE;
-	} else {
+	}
+#if defined(MIPI_HSI_TTY_WRITE_TIMEOUT_FEATURE)	
+	else {
 #if MCM_DBG_LOG
 		printk("\nmcm:locking mutex start for ch: %d\n", chno);
 #endif
 
-/* RIL recovery : hsi_ch_tty_write loops  continuously if there is no operation */
-#if defined(CONFIG_MACH_LGE_COSMOPOLITAN)
-		rc = wait_event_timeout(hsi_channels[chno].write_wait,
-				hsi_channels[chno].write_happening == HSI_FALSE, HSI_WRITE_TIMEOUT);
-
-		if (rc == 0) { /* Time out */
-#if MCM_DBG_ERR_LOG
-			printk("\nmcm: wait_event_timeout - hsi_ll_write(...) failed\n");
-#endif
-			err = -EREMOTEIO;
-			hsi_ll_reset_write_channel(chno);
-			hsi_mem_free(buf);
-		}
-		else {
+#if defined (TARGET_CARRIER_ATT) && !defined (MIPI_HSI_CHECK_CP_RX_INFO)
+		if(chno == XMD_TTY_CIQ_CHANNEL) {
+			wait_event(hsi_channels[chno].write_wait,
+				hsi_channels[chno].write_happening == HSI_FALSE);
 #if MCM_DBG_LOG
 			printk("\nmcm:locking mutex end for ch: %d\n", chno);
 #endif
 		}
+		else
+#endif 
+		{
+			err = hsi_ch_write_timeout(chno, buf);
+
+#if MCM_DBG_LOG
+			if (err < 0)
+				printk("\nmcm:hsi_ch_write_timeout ret %d for ch: %d\n", err, chno);
+#endif
+		}
+
+#if defined(HSI_MCM_NOTIFY_TO_CHARGER)
+		hsi_ch_notify_to_charger(err);
+#endif
 	}
 #else
+	else {
+#if MCM_DBG_LOG
+		printk("\nmcm:locking mutex start for ch: %d\n", chno);
+#endif
 		wait_event(hsi_channels[chno].write_wait,
 				hsi_channels[chno].write_happening == HSI_FALSE);
+#if MCM_DBG_LOG
+		printk("\nmcm:locking mutex end for ch: %d\n", chno);
+#endif
 	}
 #endif
 
@@ -383,7 +501,7 @@ void xmd_ch_close(int chno)
 		xmd_dlp_recovery(chno);
 #endif					
 	}
-	
+#if 0
 	if (hsi_channels[chno].read_happening == HSI_TRUE) {
 #if 1 //MCM_DBG_LOG
 		printk("\nmcm:locking read mutex for ch: %d\n",chno);
@@ -394,9 +512,7 @@ void xmd_ch_close(int chno)
 		printk("\nmcm:unlocking read mutex for ch: %d\n",chno);
 #endif
 	}
-
-	hsi_channels[chno].rx_blocked = 0;
-		
+#endif
 	hsi_ll_close(chno);
 	spin_lock_bh(&hsi_channels[chno].lock);
 	hsi_channels[chno].state = HSI_CH_FREE;
@@ -561,7 +677,7 @@ void hsi_write_work(struct work_struct *work)
 													write_work);
 	int chno = ch->info->chno;
 	struct x_data *data = NULL;
-	int err;
+	int err = 0;
 
 /* RIL recovery memory initialization  */
 #if 0
@@ -591,6 +707,17 @@ void hsi_write_work(struct work_struct *work)
 					"as error recovery is in progress\n", chno);
 #endif
 			hsi_mem_free(data->buf);
+			hsi_channels[chno].pending_tx_msgs--;
+			continue;
+		}
+
+		if(hsi_channels[chno].state != HSI_CH_BUSY) {
+#if MCM_DBG_LOG
+			printk("\nmcm:Dropping packets of channel %d from WQ "
+					"because channel is closed\n", chno);
+#endif
+			hsi_mem_free(data->buf);
+			hsi_channels[chno].pending_tx_msgs--;
 			continue;
 		}
 #endif
@@ -612,12 +739,26 @@ void hsi_write_work(struct work_struct *work)
 #if MCM_DBG_LOG
 			printk("\nmcm:locking mutex start for ch: %d\n",chno);
 #endif
+
+#if defined(MIPI_HSI_NET_WRITE_TIMEOUT_FEATURE)
+			err = hsi_ch_write_timeout(chno, data->buf);
+
+#if MCM_DBG_LOG
+			if (err < 0)
+				printk("\nmcm:hsi_ch_write_timeout ret %d for ch: %d\n", err, chno);
+#endif
+
+#else 
 			wait_event(hsi_channels[chno].write_wait,
 						hsi_channels[chno].write_happening == HSI_FALSE);
+
 #if MCM_DBG_LOG
-			printk("\nmcm:locking mutex end for ch: %d\n",chno);
+			printk("\nmcm:unlocking mutex end for ch: %d\n",chno);
+#endif
+
 #endif
 		}
+		
 		hsi_channels[chno].pending_tx_msgs--;
 		data->being_used = HSI_FALSE;
 
@@ -861,9 +1002,18 @@ void hsi_ch_cb(unsigned int chno, int result, int event, void* arg)
 			printk("\nmcm: Dropping the packet as channel %d is busy sending already read data\n",chno);
 #endif
 			hsi_mem_free(data->buffer);
+#if 1
 			/* Schedule work Q to send data to upper layers */
+			if (hsi_channels[chno].read_queued == HSI_TRUE) {
+#if MCM_DBG_LOG
+				printk("\nmcm: read wq already in progress\n");
+#endif
+			}
+			else {
 			PREPARE_WORK(&hsi_channels[chno].read_work, hsi_read_work);
 			queue_work(hsi_read_wq, &hsi_channels[chno].read_work);
+			}
+#endif
 		} else if (n == 1) {
 			if (hsi_channels[chno].read_happening == HSI_FALSE) {
 				hsi_channels[chno].read_happening = HSI_TRUE;
@@ -916,11 +1066,20 @@ void __init xmd_ch_init(void)
 		but IMC XMD currently supports port 1 only */
 	hsi_ll_init(XMD_SUPPORT_PORT, hsi_ch_cb);
 
-	/* Create and initialize work q */
+/* Create and initialize work q */
+#if 1
+	hsi_read_wq = create_singlethread_workqueue("hsi-read-wq");
+	hsi_write_wq = create_singlethread_workqueue("hsi-write-wq");
+#if defined (HSI_LL_ENABLE_RX_BUF_RETRY_WQ)
+	hsi_buf_retry_wq = create_singlethread_workqueue("hsi_buf_retry_wq");
+#endif
+
+#else
 	hsi_read_wq = create_workqueue("hsi-read-wq");
 	hsi_write_wq = create_workqueue("hsi-write-wq");
 #if defined (HSI_LL_ENABLE_RX_BUF_RETRY_WQ)
 	hsi_buf_retry_wq = create_workqueue("hsi_buf_retry_wq");
+#endif
 #endif
 	INIT_WORK(&XMD_DLP_RECOVERY_wq, xmd_dlp_recovery_wq);
 
@@ -957,6 +1116,7 @@ int xmd_is_recovery_state(void)
 	return 0;		
 }
 
+extern void rmnet_sync_down_for_recovery(void);
 int xmd_ch_reset(void)
 {
 	int ch_i;
@@ -964,6 +1124,10 @@ int xmd_ch_reset(void)
 
 #if defined (ENABLE_RECOVERY_WAKE_LOCK)
 	wake_lock_timeout(&xmd_recovery_wake_lock, RECOVERY_WAKELOCK_TIME);
+#endif
+
+#if 1
+	rmnet_sync_down_for_recovery();
 #endif
 
 #if defined(CONFIG_MACH_LGE_COSMOPOLITAN)

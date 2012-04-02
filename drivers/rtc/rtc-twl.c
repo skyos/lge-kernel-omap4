@@ -217,12 +217,16 @@ static int mask_rtc_irq_bit(unsigned char bit)
 static int twl_rtc_alarm_irq_enable(struct device *dev, unsigned enabled)
 {
 	int ret;
+	u8 rd_reg;
 
 	if (enabled)
 		ret = set_rtc_irq_bit(BIT_RTC_INTERRUPTS_REG_IT_ALARM_M);
-	else
+	else {
 		ret = mask_rtc_irq_bit(BIT_RTC_INTERRUPTS_REG_IT_ALARM_M);
-
+		ret |= twl_rtc_read_u8(&rd_reg, REG_RTC_STATUS_REG);
+		ret |= twl_rtc_write_u8(rd_reg | BIT_RTC_STATUS_REG_ALARM_M,
+							   REG_RTC_STATUS_REG);
+		}
 	return ret;
 }
 
@@ -364,6 +368,10 @@ static int twl_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alm)
 	ret = twl_rtc_alarm_irq_enable(dev, 0);
 	if (ret)
 		goto out;
+
+	if (! alm->enabled)
+		return ret; 
+
 
 	alarm_data[1] = bin2bcd(alm->time.tm_sec);
 	alarm_data[2] = bin2bcd(alm->time.tm_min);
@@ -622,6 +630,9 @@ static int twl_rtc_suspend(struct platform_device *pdev, pm_message_t state)
 static int twl_rtc_resume(struct platform_device *pdev)
 {
 	set_rtc_irq_bit(irqstat);
+	#ifdef CONFIG_ANDROID 
+		mask_rtc_irq_bit(BIT_RTC_INTERRUPTS_REG_IT_ALARM_M);
+	#endif
 	return 0;
 }
 

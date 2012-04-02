@@ -34,7 +34,7 @@
 #endif
 
 #define MODULE_NAME 	"CX2_NFC"
-#define DEBUG
+//#define DEBUG
 
 #ifdef DEBUG
 #define DBG(fmt, args...)				\

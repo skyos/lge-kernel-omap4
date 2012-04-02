@@ -383,6 +383,8 @@ struct input_absinfo {
 
 #define KEY_3D			249		/* Cosmopolitan 3D barrier key */
 
+#define KEY_TESTMODE_UNLOCK 	0x212
+
 #define KEY_HOOK		250		/* Cosmopolitan Earjack hook key */
 /* Code 255 is reserved for special needs of AT keyboard driver */
 

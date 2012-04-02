@@ -37,6 +37,11 @@
 
 #define XMD_RIL_RECOVERY_CHANNEL 1
 
+#if defined(CONFIG_MACH_LGE_COSMOPOLITAN)
+#define XMD_TTY_VT_DATA_CHANNEL		6
+
+#define XMD_TTY_CIQ_CHANNEL			11
+#endif
 typedef enum _HSI_CH_USER_
 {
 	XMD_TTY,

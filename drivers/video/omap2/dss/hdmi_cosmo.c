@@ -171,6 +171,9 @@ struct hdmi {
 	struct platform_device *pdev;
 } hdmi;
 
+#if defined (CONFIG_MACH_LGE_CX2)	
+bool HDMI_30Hz_support;
+#endif
 static struct omap_dss_device *get_hdmi_device(void);
 static void hdmi_get_timings(struct omap_dss_device *dssdev,
 			struct omap_video_timings *timings);
@@ -231,6 +234,9 @@ static int hdmi_stop_plug_with_status_lock(struct omap_dss_device *dssdev);
 static int hdmi_start_plug_with_status_lock(struct omap_dss_device *dssdev);
 
 static void hdmi_start_hdmi_video_delay_func(struct work_struct *data);
+#if defined (CONFIG_MACH_LGE_CX2)
+static bool HDMI_30Hz_Support(u8 *edid);
+#endif
 
 /* Structures for chardevice move this to panel */
 static int hdmi_major;
@@ -307,6 +313,52 @@ struct hdmi_hvsync_pol {
 	int hsync_pol;
 };
 
+#if defined (CONFIG_MACH_LGE_CX2)
+static const struct omap_video_timings all_timings_direct[] = {
+	{640, 480, 25200, 96, 16, 48, 2, 10, 33},
+	{1280, 720, 74250, 40, 440, 220, 5, 5, 20},
+	{1280, 720, 74250, 40, 110, 220, 5, 5, 20}, //2[4]
+	{720, 480, 27000, 62, 16, 60, 6, 9, 30},
+	{2880, 576, 108000, 256, 48, 272, 5, 5, 39},
+	{1440, 240, 27000, 124, 38, 114, 3, 4, 15},
+	{1440, 288, 27000, 126, 24, 138, 3, 2, 19},
+	{1920, 540, 74250, 44, 528, 148, 5, 2, 15},
+	{1920, 540, 74250, 44, 88, 148, 5, 2, 15},
+	{1920, 1080, 148500, 44, 88, 148, 5, 4, 36}, //9 [16]
+	{720, 576, 27000, 64, 12, 68, 5, 5, 39},
+	{1440, 576, 54000, 128, 24, 136, 5, 5, 39},
+	{1920, 1080, 148500, 44, 528, 148, 5, 4, 36}, //12 [31]
+	{2880, 480, 148500, 248, 64, 240, 6, 9, 30},
+//	{1920, 1080, 74250, 44, 638, 148, 5, 4, 36}, //14 [32]
+	{1920, 1080, 74250, 44, 88, 148, 5, 4, 36}, //9 [16]
+	{1920, 1080, 69250, 32, 48, 80, 5, 3, 23},  // 1080p@30 tmp// 138500/2  [40]
+	/* Vesa frome here */
+	{640, 480, 25175, 96, 16, 48, 2, 10, 33},
+	{800, 600, 40000, 128, 40, 88, 4 , 1, 23},
+	{848, 480, 33750, 112, 16, 112, 8 , 6, 23},
+	{1280, 768, 79500, 128, 64, 192, 7 , 3, 20},
+	{1280, 800, 83500, 128, 72, 200, 6 , 3, 22},
+	{1360, 768, 85500, 112, 64, 256, 6 , 3, 18},
+	{1280, 960, 108000, 112, 96, 312, 3 , 1, 36},
+	{1280, 1024, 108000, 112, 48, 248, 3 , 1, 38},
+	{1024, 768, 65000, 136, 24, 160, 6, 3, 29},
+	{1400, 1050, 121750, 144, 88, 232, 4, 3, 32},
+	{1440, 900, 106500, 152, 80, 232, 6, 3, 25},
+	{1680, 1050, 146250, 176 , 104, 280, 6, 3, 30},
+	{1366, 768, 85500, 143, 70, 213, 3, 3, 24},
+	{1920, 1080, 148500, 44, 88, 148, 5, 4, 36}, //28 [0x52]
+	{1280, 768, 68250, 32, 48, 80, 7, 3, 12},
+	{1400, 1050, 101000, 32, 48, 80, 4, 3, 23},
+	{1680, 1050, 119000, 32, 48, 80, 6, 3, 21},
+	{1280, 800, 79500, 32, 48, 80, 6, 3, 14},
+	{1280, 720, 74250, 40, 110, 220, 5, 5, 20},
+	{1920, 1200, 154000, 32, 48, 80, 6, 3, 26},
+	/* supported 3d timings UNDEROVER full frame */
+	{1280, 1470, 148350, 40, 110, 220, 5, 5, 20},
+	{1280, 1470, 148500, 40, 110, 220, 5, 5, 20},
+	{1280, 1470, 148500, 40, 440, 220, 5, 5, 20}
+};
+#else
 /* All supported timing values that OMAP4 supports */
 static const struct omap_video_timings all_timings_direct[] = {
 	{640, 480, 25200, 96, 16, 48, 2, 10, 33},
@@ -350,8 +402,19 @@ static const struct omap_video_timings all_timings_direct[] = {
 	{1280, 1470, 148500, 40, 110, 220, 5, 5, 20},
 	{1280, 1470, 148500, 40, 440, 220, 5, 5, 20}
 };
+#endif
 
 /* Array which maps the timing values with corresponding CEA / VESA code */
+#if defined (CONFIG_MACH_LGE_CX2)
+static int code_index[ARRAY_SIZE(all_timings_direct)] = {
+	1,	19,  4,  2, 37,  6, 21, 20,  5, 16, 17,
+	29, 31, 35, 34, 40,
+	/* <--15 CEA 22--> vesa*/
+	4, 9, 0xE, 0x17, 0x1C, 0x27, 0x20, 0x23, 0x10, 0x2A,
+	0X2F, 0x3A, 0X51, 0X52, 0x16, 0x29, 0x39, 0x1B, 0x55, 0X2C,
+	4, 4, 19,
+};
+#else
 static int code_index[ARRAY_SIZE(all_timings_direct)] = {
 	1,  19,  4,  2, 37,  6, 21, 20,  5, 16, 17,
 	29, 31, 35, 32,
@@ -360,8 +423,24 @@ static int code_index[ARRAY_SIZE(all_timings_direct)] = {
 	0X2F, 0x3A, 0X51, 0X52, 0x16, 0x29, 0x39, 0x1B, 0x55, 0X2C,
 	4, 4, 19,
 };
+#endif
 
 /* Mapping the Timing values with the corresponding Vsync and Hsync polarity */
+#if defined (CONFIG_MACH_LGE_CX2)
+static const
+struct hdmi_hvsync_pol hvpol_mapping[ARRAY_SIZE(all_timings_direct)] = {
+	{0, 0}, {1, 1}, {1, 1}, {0, 0},
+	{0, 0}, {0, 0}, {0, 0}, {1, 1},
+	{1, 1}, {1, 1}, {0, 0}, {0, 0},
+	{1, 1}, {0, 0}, {1, 1}, {1, 1},/* VESA */
+	{0, 0}, {1, 1}, {1, 1}, {1, 0},
+	{1, 0}, {1, 1}, {1, 1}, {1, 1},
+	{0, 0}, {1, 0}, {1, 0}, {1, 0},
+	{1, 1}, {1, 1}, {0, 1}, {0, 1},
+	{0, 1}, {0, 1}, {1, 1}, {1, 0},
+	{1, 1}, {1, 1}, {1, 1}
+};
+#else
 static const
 struct hdmi_hvsync_pol hvpol_mapping[ARRAY_SIZE(all_timings_direct)] = {
 	{0, 0}, {1, 1}, {1, 1}, {0, 0},
@@ -375,14 +454,24 @@ struct hdmi_hvsync_pol hvpol_mapping[ARRAY_SIZE(all_timings_direct)] = {
 	{0, 1}, {0, 1}, {1, 1}, {1, 0},
 	{1, 1}, {1, 1}, {1, 1}
 };
+#endif
 
 /* Map CEA code to the corresponding timing values (10 entries/line) */
+#if defined (CONFIG_MACH_LGE_CX2)
+static int code_cea[41] = { 
+	-1,  0,  3,  3,  2,  8,  5,  5, -1, -1, 
+	-1, -1, -1, -1, -1, -1,  -1, 10, 10, 1,	
+	 7,	 6,  6, -1, -1, -1, -1, -1, -1, 11, 
+	11, -1, -1, -1, 14, 13, 13,  4,  4, -1, 15
+};
+#else
 static int code_cea[39] = {
 	-1,  0,  3,  3,  2,  8,  5,  5, -1, -1,
 	-1, -1, -1, -1, -1, -1,  9, 10, 10,  1,
 	7,   6,  6, -1, -1, -1, -1, -1, -1, 11,
 	11, 12, 14, -1, -1, 13, 13,  4,  4
 };
+#endif
 
 /* Map CEA code to the corresponding 3D timing values */
 static int s3d_code_cea[39] = {
@@ -393,6 +482,19 @@ static int s3d_code_cea[39] = {
 };
 
 /* Map VESA code to the corresponding timing values */
+#if defined (CONFIG_MACH_LGE_CX2)
+static int code_vesa[86] = {
+	-1, -1, -1, -1, 15, -1, -1, -1, -1, 16,
+	-1, -1, -1, -1, 17, -1, 23, -1, -1, -1,
+	-1, -1, 29, 18, -1, -1, -1, 32, 19, -1,
+	-1, -1, 21, -1, -1, 22, -1, -1, -1, 20,
+	-1, 30, 24, -1, 34, -1, -1, 25, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, 31, 26, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, 27, -1, -1, -1, 33
+};
+#else
 static int code_vesa[86] = {
 	-1, -1, -1, -1, 15, -1, -1, -1, -1, 16,
 	-1, -1, -1, -1, 17, -1, 23, -1, -1, -1,
@@ -404,8 +506,7 @@ static int code_vesa[86] = {
 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 	-1, 27, 28, -1, -1, 33
 };
-
-
+#endif
 
 struct hdmi_cm {
 	int code;
@@ -1047,9 +1148,16 @@ static int get_timings_index_with_connection_lock(void)
 		code = code_cea[hdmi.connection.code];
 
 	if (code == -1 || all_timings_direct[code].x_res >= 2048) {
+#if defined (CONFIG_MACH_LGE_CX2)
+		code = 2;
+		hdmi.connection.code = 4;
+		hdmi.connection.mode = 1;
+		DSSINFO(">>>Change to default code %d mode %d 720p@60Hz\n",hdmi.connection.code, hdmi.connection.mode);
+#else
 		code = 9;
 		hdmi.connection.code = 16;
 		hdmi.connection.mode = 1;
+#endif
 	}
 	return code;
 }
@@ -1294,7 +1402,9 @@ int hdmi_init(struct platform_device *pdev)
 	printk(KERN_INFO "Enter hdmi_init()\n");
 
 	memset(&hdmi, 0, sizeof(hdmi));
-
+#if defined (CONFIG_MACH_LGE_CX2)	
+	HDMI_30Hz_support = false;
+#endif
 
 	hdmi.pdata = pdev->dev.platform_data;
 	hdmi.pdev = pdev;
@@ -1744,6 +1854,9 @@ static void hdmi_status_to_off_with_status_lock(struct omap_dss_device *dssdev)
 		dssdev->state = OMAP_DSS_DISPLAY_DISABLED;	//if not set clock will not be turned off.
 		dss_mainclk_state_disable(true);	// if needed DSS main-clock off
 	}
+#if defined (CONFIG_MACH_LGE_CX2)	
+	HDMI_30Hz_support = false;
+#endif
 	//////////////////////////////////////////////////////
 	dssdev->state = OMAP_DSS_DISPLAY_DISABLED;
 	//////////////////////////////////////////////////////
@@ -2555,6 +2668,16 @@ static struct hdmi_cm hdmi_get_code(struct omap_video_timings *timing)
 
 	for (i = 0; i < ARRAY_SIZE(all_timings_direct); i++) {
 		temp = all_timings_direct[i];
+#if defined (CONFIG_MACH_LGE_CX2)
+		if( timing->pixel_clock == 138500 && HDMI_30Hz_support )
+		{
+			cm.code =40;  // 40 : different from CEA spec
+			cm.mode = code < OMAP_HDMI_TIMINGS_VESA_START;
+			DSSDBG("--->> change to 1080@30Hz,138500/2	%d \n", cm.code );
+		}
+		else
+#endif
+		{
 		if (temp.pixel_clock != timing->pixel_clock ||
 		    temp.x_res != timing->x_res ||
 		    temp.y_res != timing->y_res)
@@ -2572,11 +2695,18 @@ static struct hdmi_cm hdmi_get_code(struct omap_video_timings *timing)
 		if (temp_hsync == timing_hsync && temp_vsync == timing_vsync) {
 			code = i;
 			cm.code = code_index[i];
+#if defined (CONFIG_MACH_LGE_CX2)	
+				if (HDMI_30Hz_support) {
+					cm.code = 34;
+					DSSDBG("--->> change to 1080@30Hz %d \n", cm.code );
+				}
+#endif			
 			cm.mode = code < OMAP_HDMI_TIMINGS_VESA_START;
 			DSSDBG("Hdmi_code = %d mode = %d\n", cm.code, cm.mode);
 			print_omap_video_timings(&temp);
 			break;
 		}
+	}
 	}
 	return cm;
 }
@@ -2940,6 +3070,12 @@ static int hdmi_read_edid_with_connection_lock(struct omap_video_timings *dp)
 		ret = HDMI_CORE_DDC_READEDID(HDMI_CORE_SYS, hdmi.connection.edid,
 							HDMI_EDID_MAX_LENGTH);
 	}
+#if defined (CONFIG_MACH_LGE_CX2)	
+		if (HDMI_30Hz_Support(hdmi.connection.edid)) {
+			HDMI_30Hz_support = 1;
+		}
+#endif
+
 	if (ret != 0) {
 		printk(KERN_WARNING "HDMI failed to read E-EDID\n");
 //		return ret;
@@ -3543,3 +3679,36 @@ static int hdmi_get_hpd_status_with_status_lock(void)
 	else
 		return HDMI_HPD_get_status();
 }
+
+#if defined (CONFIG_MACH_LGE_CX2)
+static bool HDMI_30Hz_Support(u8 *edid)
+{
+	u8 i = 0, mark = 0;
+	int offset, addr, length;
+	struct omap_video_timings timings;
+	struct hdmi_cm cm;
+
+	if (edid[0x7e] != 0x00) {
+		offset = edid[EDID_DESCRIPTOR_BLOCK1_ADDRESS + 2];
+		if (offset != 0) {
+			addr = EDID_DESCRIPTOR_BLOCK1_ADDRESS + offset;
+			for (i = 0; i < EDID_SIZE_BLOCK1_TIMING_DESCRIPTOR; i++) {
+				get_eedid_timing_info(addr, edid, &timings);
+				addr += EDID_TIMING_DESCRIPTOR_SIZE;
+				cm = hdmi_get_code(&timings);
+			}
+		}
+		hdmi_get_video_svds(edid, &offset, &length);
+		for (i = 0; i < length; i++) {
+			if ((edid[offset+i] & HDMI_EDID_EX_VIDEO_MASK) == 32) {
+				printk(KERN_INFO ">>> HDMI_30Hz_support <<<\n");
+				return 1;
+			}
+		}
+
+	}
+
+	return 0;
+
+}
+#endif

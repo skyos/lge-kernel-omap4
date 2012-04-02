@@ -127,6 +127,12 @@ int hsi_mem_init(void)
 			printk("\nhsi_mem: failed to alloc HSI_MEM_BLOCK3  memory.i=%d",i);
 #endif
 	}
+#if 1
+	for(i=0; i < HSI_MEM_NUM_OF_FB_BLK; i++) {
+		hsi_mem_fb_block[i] = NULL;
+	}
+#endif
+	
 #endif
 	spin_lock_init(&hsi_mem_lock);
 
@@ -373,6 +379,9 @@ void hsi_mem_free(void* buf)
 	/* free fallback memory */
 	for (i=0; i < HSI_MEM_NUM_OF_FB_BLK; i++) {
 		if (hsi_mem_fb_block[i] == fb_mem) {
+#if defined (HSI_MEM_ENABLE_LOGS)
+			printk("\nhsi_mem: free fall back mem %x", fb_mem);
+#endif
 			kfree(fb_mem);
 			hsi_mem_fb_block[i] = NULL;
 			goto quit_mem_free;

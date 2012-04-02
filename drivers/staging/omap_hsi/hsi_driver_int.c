@@ -203,6 +203,29 @@ int hsi_driver_enable_interrupt(struct hsi_port *pport, u32 flag)
 	return 0;
 }
 
+void hsi_driver_ack_interrupt(struct hsi_port *pport, u32 flag, bool backup)
+{
+	hsi_outl(flag, pport->hsi_controller->base,
+		     HSI_SYS_MPU_STATUS_CH_REG(pport->port_number,
+					      pport->n_irq,
+					      backup ? HSI_SSI_CHANNELS_MAX :
+					      0));
+}
+
+bool hsi_driver_is_interrupt_pending(struct hsi_port *pport, u32 flag,
+					bool backup)
+{
+	u32 val;
+
+	val = hsi_inl(pport->hsi_controller->base,
+		      HSI_SYS_MPU_STATUS_CH_REG(pport->port_number,
+						pport->n_irq,
+						backup ? HSI_SSI_CHANNELS_MAX :
+						0));
+
+	return val & flag;
+}
+
 /* Enables the Data Accepted Interrupt of HST for the given channel */
 int hsi_driver_enable_write_interrupt(struct hsi_channel *ch, u32 * data)
 {
@@ -417,8 +440,12 @@ static void hsi_do_channel_rx(struct hsi_channel *ch)
 	 * Check race condition: RX transmission initiated but DMA transmission
 	 * already started - acknowledge then ignore interrupt occurence
 	 */
-	if (ch->read_data.lch != -1)
+	if (ch->read_data.lch != -1) {
+		dev_warn(hsi_ctrl->dev,
+			"Race condition between RX Int ch %d and DMA %0x\n",
+			n_ch, ch->read_data.lch);
 		goto done;
+	}
 
 	if (ch->flags & HSI_CH_RX_POLL)
 		rx_poll = 1;
@@ -479,8 +506,7 @@ int hsi_do_cawake_process(struct hsi_port *pport)
 		/* Check for possible mismatch (race condition) */
 		if (unlikely(pport->cawake_status)) {
 			dev_warn(hsi_ctrl->dev,
-				"CAWAKE race is detected: %s.\n",
-				"HI -> LOW -> HI");
+				"Missed previous CAWAKE falling edge...\n");
 /* Disable hsi_port_event_handler because of Not-needed */
 #if 0
 			spin_unlock(&hsi_ctrl->lock);
@@ -488,6 +514,8 @@ int hsi_do_cawake_process(struct hsi_port *pport)
 						NULL);
 			spin_lock(&hsi_ctrl->lock);
 #endif
+			hsi_driver_ack_interrupt(pport, HSI_CAWAKEDETECTED,
+						 true);
 		}
 		pport->cawake_status = 1;
 
@@ -510,8 +538,7 @@ int hsi_do_cawake_process(struct hsi_port *pport)
 
 		if (unlikely(!pport->cawake_status)) {
 			dev_warn(hsi_ctrl->dev,
-				"CAWAKE race is detected: %s.\n",
-				"LOW -> HI -> LOW");
+				"Missed previous CAWAKE rising edge...\n");
 /* Disable hsi_port_event_handler because of Not-needed */
 #if 0
 			spin_unlock(&hsi_ctrl->lock);
@@ -519,6 +546,8 @@ int hsi_do_cawake_process(struct hsi_port *pport)
 						NULL);
 			spin_lock(&hsi_ctrl->lock);
 #endif
+			hsi_driver_ack_interrupt(pport, HSI_CAWAKEDETECTED,
+						 true);
 		}
 		pport->cawake_status = 0;
 
@@ -561,6 +590,9 @@ static u32 hsi_driver_int_proc(struct hsi_port *pport,
 	/* Get events status */
 	status_reg = hsi_inl(base, status_offset);
 	status_reg &= hsi_inl(base, enable_offset);
+
+	if (pport->cawake_double_int)
+		status_reg |= HSI_CAWAKEDETECTED;
 
 	if (pport->cawake_off_event) {
 		dev_dbg(hsi_ctrl->dev, "CAWAKE detected from OFF mode.\n");
@@ -651,6 +683,8 @@ static u32 hsi_process_int_event(struct hsi_port *pport)
 	unsigned int irq = pport->n_irq;
 	u32 status_reg;
 
+	hsi_driver_ack_interrupt(pport, HSI_CAWAKEDETECTED, true);
+
 	/* Process events for channels 0..7 */
 	status_reg = hsi_driver_int_proc(pport,
 			    HSI_SYS_MPU_STATUS_REG(port, irq),
@@ -658,12 +692,19 @@ static u32 hsi_process_int_event(struct hsi_port *pport)
 			    0,
 			    min(pport->max_ch, (u8) HSI_SSI_CHANNELS_MAX) - 1);
 
-	/* Process events for channels 8..15 */
-	if (pport->max_ch > HSI_SSI_CHANNELS_MAX)
+	if (hsi_driver_is_interrupt_pending(pport, HSI_CAWAKEDETECTED, true)) {
+		dev_warn(pport->hsi_controller->dev, "New CAWAKE interrupt "
+			 "detected during interrupt procesing\n");
+		pport->cawake_double_int = true;
+	}
+
+	if ((pport->max_ch > HSI_SSI_CHANNELS_MAX) || pport->cawake_double_int)
 		status_reg |= hsi_driver_int_proc(pport,
 				    HSI_SYS_MPU_U_STATUS_REG(port, irq),
 				    HSI_SYS_MPU_U_ENABLE_REG(port, irq),
 				    HSI_SSI_CHANNELS_MAX, pport->max_ch - 1);
+
+	pport->cawake_double_int = false;
 
 	return status_reg;
 }
