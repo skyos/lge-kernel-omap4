@@ -1,0 +1,24 @@
+diff a/drivers/net/usb/usbnet.c b/drivers/net/usb/usbnet.c	(rejected hunks)
+@@ -491,18 +507,19 @@ static void rx_complete (struct urb *urb)
+ 		// FALLTHROUGH
+ 
+ 	default:
+-		entry->state = rx_cleanup;
++		state = rx_cleanup;
+ 		dev->net->stats.rx_errors++;
+ 		netif_dbg(dev, rx_err, dev->net, "rx status %d\n", urb_status);
+ 		break;
+ 	}
+ 
+-	defer_bh(dev, skb, &dev->rxq);
++	state = defer_bh(dev, skb, &dev->rxq, state);
+ 
+ 	if (urb) {
+ 		if (netif_running (dev->net) &&
+ 				!test_bit (EVENT_RX_HALT, &dev->flags) &&
+-				(dev->done.qlen < DONE_QLEN(dev))) {
++				(dev->done.qlen < DONE_QLEN(dev)) &&
++				(state != unlink_start)) {
+ 			rx_submit (dev, urb, GFP_ATOMIC);
+ 			return;
+ 		}
