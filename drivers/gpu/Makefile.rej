@@ -1,0 +1,5 @@
+diff a/drivers/gpu/Makefile b/drivers/gpu/Makefile	(rejected hunks)
+@@ -1 +1,2 @@
+ obj-y			+= drm/ vga/ stub/ ion/
++obj-y			+= pvr/
+\ No newline at end of file
