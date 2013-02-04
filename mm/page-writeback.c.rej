@@ -1,10 +1,17 @@
 diff a/mm/page-writeback.c b/mm/page-writeback.c	(rejected hunks)
-@@ -89,7 +90,7 @@ static inline long sync_writeback_pages(unsigned long dirtied)
- /*
-  * The interval between `kupdate'-style writebacks
-  */
--unsigned int dirty_writeback_interval = 2000; /* centiseconds */
-+unsigned int dirty_writeback_interval = 0; /* centiseconds */
+@@ -775,12 +775,14 @@ void writeback_set_ratelimit(void)
  
- /*
-  * The longest time for which data is allowed to remain dirty
+ static void dirty_early_suspend(struct early_suspend *handler)
+ {
+-	dirty_writeback_interval = 2000;
++	dirty_writeback_interval = 3000;
++	dirty_expire_interval = 1000;
+ }
+ 
+ static void dirty_late_resume(struct early_suspend *handler)
+ {
+ 	dirty_writeback_interval = 0;
++	dirty_expire_interval = 200;
+ }
+ 
+ static struct early_suspend dirty_suspend = {
