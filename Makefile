@@ -350,8 +350,8 @@ CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 CFLAGS_MODULE   = -DMODULE -mcpu=cortex-a9 -mfpu=neon -funswitch-loops -fpredictive-commoning -fgcse-after-reload -ftree-vectorize -fipa-cp-clone -fsingle-precision-constant -pipe
 AFLAGS_MODULE   =
 LDFLAGS_MODULE  =
-CFLAGS_KERNEL	= -march=armv7-a -mfpu=neon
-AFLAGS_KERNEL	= -march=armv7-a -mfpu=neon
+CFLAGS_KERNEL	= -mcpu=cortex-a9 -mfpu=neon -ftree-vectorize -fsingle-precision-constant -ffast-math
+AFLAGS_KERNEL	=
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
 
 
@@ -369,10 +369,10 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -Werror-implicit-function-declaration \
 		   -Wno-format-security \
 		   -fno-delete-null-pointer-checks \
-			-march=armv7-a -mfpu=neon \
        			-mcpu=cortex-a9 \
        			-mno-unaligned-access \
-			-mfloat-abi=softfp
+			-ffast-math \
+			-fsingle-precision-constant
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
 KBUILD_AFLAGS   := -D__ASSEMBLY__
