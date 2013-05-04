@@ -215,7 +215,7 @@ static struct regulator_consumer_supply twl6030_vaux3_supply[] = {
 // match the constraint
 TWL6030_REGULATOR_DEVICE(vmmc,  1200000, 3300000, 0, 1);	// SD
 TWL6030_REGULATOR_DEVICE(vpp,   1800000, 1800000, 0, 0);	// OMAP_VPP_CUST
-TWL6030_REGULATOR_DEVICE(vusim, 3200000, 3200000, 0, 0);	// Vibrator
+TWL6030_REGULATOR_DEVICE(vusim, 2500000, 2500000, 0, 0);	// Vibrator
 /* The Vusb is defined directly instead of below def() for 172777*/
 /* TWL6030_REGULATOR_DEVICE(vusb, 	3300000, 3300000, 0,0);	// USB */
 //TWL6030_REGULATOR_DEVICE(vaux1, 2800000, 2800000, 0, 1);	// eMMC
@@ -224,8 +224,8 @@ TWL6030_REGULATOR_DEVICE(vaux3, 1800000, 1800000, 0, 0);	// Cam
 
 static struct regulator_init_data twl6030_vaux1_data = {
    .constraints = {
-     .min_uV = 3000000,
-     .max_uV = 3000000,
+     .min_uV = 2950000,
+     .max_uV = 2950000,
      .apply_uV = true,
      .always_on = true,
      .boot_on = true,
