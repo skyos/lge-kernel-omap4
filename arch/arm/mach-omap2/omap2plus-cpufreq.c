@@ -67,6 +67,8 @@ static unsigned int current_cooling_level;
 static bool omap_cpufreq_ready;
 static bool omap_cpufreq_suspended;
 
+static int oc_val;
+
 static unsigned int omap_getspeed(unsigned int cpu)
 {
 	unsigned long rate;
@@ -466,8 +468,54 @@ static int omap_cpu_exit(struct cpufreq_policy *policy)
 	return 0;
 }
 
+ /*
+  * Variable GPU OC - sysfs interface for cycling through different GPU top speeds
+  * Author: imoseyon@gmail.com, micha.laqua@gmail.com
+  *
+ */
+ static ssize_t show_gpu_oc(struct cpufreq_policy *policy, char *buf)
+ {
+ 	return sprintf(buf, "%d\n", oc_val);
+ }
+ static ssize_t store_gpu_oc(struct cpufreq_policy *policy, const char *buf,
+ 	size_t count)
+ {
+ 	int prev_oc, ret1, ret2;
+         struct device *dev;
+ 	unsigned long gpu_freqs[2] = {307200000,384000000};
+ 
+ 	prev_oc = oc_val;
+ 	if (prev_oc < 0 || prev_oc > 1) {
+ 		// shouldn't be here
+ 		pr_info("[overclock] gpu_oc error - bailing\n");
+ 		return count;
+ 	}
+ 
+ 	sscanf(buf, "%d\n", &oc_val);
+ 	if (oc_val < 0 ) oc_val = 0;
+ 	if (oc_val > 1 ) oc_val = 1;
+ 	if (prev_oc == oc_val) return count;
+ 
+         dev = omap_hwmod_name_get_dev("gpu");
+         ret1 = opp_disable(dev, gpu_freqs[prev_oc]);
+         ret2 = opp_enable(dev, gpu_freqs[oc_val]);
+         pr_info("[overclock] gpu top speed changed from %lu to %lu (%d,%d)\n",
+ 		gpu_freqs[prev_oc], gpu_freqs[oc_val], ret1, ret2);
+ 
+ 	return count;
+ }
+ 
+ struct freq_attr gpu_oc = {
+ 	.attr = { .name = "gpu_oc",
+ 		  .mode = 0666,
+ 		},
+ 	.show = show_gpu_oc,
+ 	.store = store_gpu_oc,
+ };
+ 
 static struct freq_attr *omap_cpufreq_attr[] = {
 	&cpufreq_freq_attr_scaling_available_freqs,
+	&gpu_oc,
 	NULL,
 };
 
@@ -520,6 +568,8 @@ static struct platform_device omap_cpufreq_device = {
 static int __init omap_cpufreq_init(void)
 {
 	int ret;
+
+	oc_val = 0;
 
 	if (cpu_is_omap24xx())
 		mpu_clk_name = "virt_prcm_set";
