@@ -1,0 +1,38 @@
+diff a/arch/arm/mach-omap2/omap2plus-cpufreq.c b/arch/arm/mach-omap2/omap2plus-cpufreq.c	(rejected hunks)
+@@ -99,6 +100,13 @@ struct lpj_info {
+ 
+ #endif
+ 
++#define ENABLE_SLEEP_MAX_FREQUENCY
++
++#ifdef ENABLE_SLEEP_MAX_FREQUENCY
++static unsigned int screen_off_max_freq = 0;
++static unsigned int max_freq_cap = 0;
++#endif
++
+ static unsigned int omap_getspeed(unsigned int cpu)
+ {
+ 	unsigned long rate;
+@@ -778,6 +886,9 @@ static ssize_t store_iva_freq_oc(struct cpufreq_policy *policy, const char *buf,
+ #ifdef CONFIG_OMAP4430_IVA_OVERCLOCK
+ 	&omap_cpufreq_attr_iva_freq_oc,
+ #endif
++#ifdef ENABLE_SLEEP_MAX_FREQUENCY
++	&omap_cpufreq_attr_screen_off_freq,
++#endif
+ 	NULL,
+ };
+ 
+@@ -839,6 +950,12 @@ static int __init omap_cpufreq_init(void)
+ 	iva_freq_oc = 0;
+ #endif
+ 
++#ifdef ENABLE_SLEEP_MAX_FREQUENCY
++	screen_off_max_freq = 0;
++	max_freq_cap = 0;
++#endif
++
++
+ 	if (cpu_is_omap24xx())
+ 		mpu_clk_name = "virt_prcm_set";
+ 	else if (cpu_is_omap34xx())
