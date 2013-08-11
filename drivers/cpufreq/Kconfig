@@ -123,7 +123,6 @@ config CPU_FREQ_DEFAULT_GOV_HOTPLUG
 	  the help section of the driver. Fallback governor will be the
 	  performance governor.
 
-## SJIT 2012-02-01 [dojip.kim@lge.com] Add SANJOSE governor
 config CPU_FREQ_DEFAULT_GOV_SANJOSE
 	bool "sanjose (Experimental)"
 	select CPU_FREQ_GOV_SANJOSE
@@ -254,7 +253,6 @@ config CPU_FREQ_GOV_HOTPLUG
 
 	  If in doubt, say N.
 
-## SJIT 2012-02-01 [dojip.kim@lge.com] Add SANJOSE governor
 config CPU_FREQ_GOV_SANJOSE
 	tristate "'sanjose' cpufreq governor (Experimental)"
 	depends on CPU_FREQ && NO_HZ && HOTPLUG_CPU
