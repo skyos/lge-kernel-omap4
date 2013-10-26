@@ -130,10 +130,6 @@ obj-$(CONFIG_DMM_OMAP)		+= media/
 obj-$(CONFIG_TILER_OMAP)	+= media/
 obj-$(CONFIG_OMAP_HSI)		+= omap_hsi/
 
-#Extra modules  - ExperiencedKernel
-
-obj-y                           += p760_misc/
-
 #
 # the drivers for LGE board
 #

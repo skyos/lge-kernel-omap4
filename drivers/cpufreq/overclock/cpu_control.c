@@ -29,9 +29,9 @@
 #include <plat/omap-pm.h>
 #include <plat/omap_device.h>
 #include <plat/common.h>
-#include "../../arch/arm/mach-omap2/omap_opp_data.h"
-#include "../../arch/arm/mach-omap2/voltage.h"
-#include "symsearch/symsearch.h"
+#include "../../../arch/arm/mach-omap2/omap_opp_data.h"
+#include "../../../arch/arm/mach-omap2/voltage.h"
+#include "../symsearch/symsearch.h"
 //opp.c
 SYMSEARCH_DECLARE_FUNCTION_STATIC(int, opp_add_s, struct device *dev, unsigned long freq, unsigned long u_volt);
 SYMSEARCH_DECLARE_FUNCTION_STATIC(int, opp_get_opp_count_s, struct device *dev);
@@ -156,7 +156,7 @@ static int proc_cpu_tweak(struct file *filp, const char __user *buffer, unsigned
 			return -EFAULT;
 		}
 		//some filter
-		if (volt > OMAP4_VP_MPU_VLIMITTO_VDDMAX/1000) volt = OMAP4_VP_MPU_VLIMITTO_VDDMAX/1000;
+		if (volt > OMAP4430_VP_MPU_VLIMITTO_VDDMAX/1000) volt = OMAP4430_VP_MPU_VLIMITTO_VDDMAX/1000;
 		if (volt < OMAP4_VP_MPU_VLIMITTO_VDDMIN/1000) volt = OMAP4_VP_MPU_VLIMITTO_VDDMIN/1000;
 		if (freq > 2000) freq = def_ft[opp_count-1].rate/1000;
 		if (freq < 0) freq = def_ft[0].rate/1000;
@@ -300,7 +300,7 @@ static int __init cpu_control_init(void) {
 	mpu_opp->rate = HIGH_FREQ;
 
 	//min_opp->rate= 384000000;
-/*
+
 	if (opp_count == 5) {
 		opp_add_s(mpu_dev, LOW_FREQ, LOW_VOLTAGE);
 		opp_add_s(mpu_dev, HIGH_FREQ, HIGH_VOLTAGE);
