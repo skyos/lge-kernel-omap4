@@ -89,10 +89,10 @@ struct omap4_ldo_abb_trim_data {
  * voltage dependent data for each VDD.
  */
 
-#define OMAP4430_VDD_MPU_OPP25_UV     992000 //  150 Mhz
+#define OMAP4430_VDD_MPU_OPP25_UV     994000 //  192 Mhz
 #define OMAP4430_VDD_MPU_OPP50_UV    1010000 //  300 Mhz
 #define OMAP4430_VDD_MPU_OPP100_UV    1185000 //  600 Mhz
-#define OMAP4430_VDD_MPU_OPPTURBO_UV    1310000 //  800 Mhz
+#define OMAP4430_VDD_MPU_OPPTURBO_UV    1255000 //  729 Mhz
 #define OMAP4430_VDD_MPU_OPPNITRO_UV    1375000 // 1008 Mhz
 #define OMAP4430_VDD_MPU_OPPNITROSB_UV    1385000 // 1200 Mhz
 
@@ -173,13 +173,13 @@ struct omap_vdd_dep_info omap443x_vddiva_dep_info[] = {
 
 static struct omap_opp_def __initdata omap443x_opp_def_list[] = {
 	/* 150Mhz */
-	OPP_INITIALIZER("mpu", "dpll_mpu_ck", "mpu", true, 150000000, OMAP4430_VDD_MPU_OPP25_UV),
+	OPP_INITIALIZER("mpu", "dpll_mpu_ck", "mpu", true, 192000000, OMAP4430_VDD_MPU_OPP25_UV),
 	/* MPU OPP1 - OPP50 */
 	OPP_INITIALIZER("mpu", "dpll_mpu_ck", "mpu", true, 300000000, OMAP4430_VDD_MPU_OPP50_UV),
 	/* MPU OPP2 - OPP100 */
 	OPP_INITIALIZER("mpu", "dpll_mpu_ck", "mpu", true, 600000000, OMAP4430_VDD_MPU_OPP100_UV),
 	/* MPU OPP3 - OPP-Turbo */
-	OPP_INITIALIZER("mpu", "dpll_mpu_ck", "mpu", true, 800000000, OMAP4430_VDD_MPU_OPPTURBO_UV),
+	OPP_INITIALIZER("mpu", "dpll_mpu_ck", "mpu", true, 729600000, OMAP4430_VDD_MPU_OPPTURBO_UV),
 	/* MPU OPP4 - OPP-NT */
 	OPP_INITIALIZER("mpu", "dpll_mpu_ck", "mpu", true, 1008000000, OMAP4430_VDD_MPU_OPPNITRO_UV),
 #if defined(CONFIG_MACH_LGE_CX2) //##hwcho20120518 1.2Ghz Àû¿ë.
