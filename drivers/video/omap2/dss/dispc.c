@@ -36,10 +36,7 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/ratelimit.h>
-//LGE_CHANGE_S [jeonghoon.cho@lge.com] 2012-0208, P940 : Add GAMMA Function refer from P2 GB
-#include <linux/gpio.h>
-#include <lge/board.h>
-//LGE_CHANGE_E [jeonghoon.cho@lge.com] 2012-0208, P940 : Add GAMMA Function refer from P2 GB
+
 
 #include <plat/sram.h>
 #include <plat/clock.h>
@@ -51,10 +48,12 @@
 #include "../clockdomain.h"
 #include "dss.h"
 #include "dss_features.h"
-//LGE_CHANGE_S [jeonghoon.cho@lge.com] 2012-0208, P940 : Add GAMMA Function refer from P2 GB
-#include "gammatable.h"
-//LGE_CHANGE_E [jeonghoon.cho@lge.com] 2012-0208, P940 : Add GAMMA Function refer from P2 GB
+
 #include "dispc.h"
+
+#ifdef CONFIG_OMAP2_DSS_GAMMA_CONTROL
+#include "gammatable.h"
+#endif
 
 /* DISPC */
 #define DISPC_SZ_REGS			SZ_4K
@@ -63,9 +62,7 @@
 extern int hrz_res_conv_mode;
 #endif
 
-//LGE_CHANGE_S [jeonghoon.cho@lge.com] 2012-0208, P940 : Add GAMMA Function refer from P2 GB
-#define DISPC_REG(idx)			((const u16) {idx})//((const struct dispc_reg) { idx })
-//LGE_CHANGE_E [jeonghoon.cho@lge.com] 2012-0208, P940 : Add GAMMA Function refer from P2 GB
+
 #define DISPC_IRQ_MASK_ERROR            (DISPC_IRQ_GFX_FIFO_UNDERFLOW | \
 					 DISPC_IRQ_OCP_ERR | \
 					 DISPC_IRQ_VID1_FIFO_UNDERFLOW | \
@@ -73,11 +70,6 @@ extern int hrz_res_conv_mode;
 					 DISPC_IRQ_SYNC_LOST | \
 					 DISPC_IRQ_SYNC_LOST_DIGIT)
 
-//LGE_CHANGE_S [jeonghoon.cho@lge.com] 2012-0208, P940 : Add GAMMA Function refer from P2 GB
-#define DISPC_VID_OMAP4_REG(n, idx) DISPC_REG(0x0600 + (n)*0x04 + idx)
-#define DISPC_GAMMA_TABLE(n)	   DISPC_VID_OMAP4_REG(n, 0x0030)
-					/* n = {0,1,2,3} */
-//LGE_CHANGE_E [jeonghoon.cho@lge.com] 2012-0208, P940 : Add GAMMA Function refer from P2 GB
 #define DISPC_MAX_NR_ISRS		8
 
 static struct clockdomain *l3_1_clkdm, *l3_2_clkdm;
@@ -745,12 +737,7 @@ void dispc_go(enum omap_channel channel)
 
 	DSSDBG("GO %s\n", channel == OMAP_DSS_CHANNEL_LCD ? "LCD" :
 		(channel == OMAP_DSS_CHANNEL_LCD2 ? "LCD2" : "DIGIT"));
-//LGE_CHANGE_S [jeonghoon.cho@lge.com] 2012-0208, P940 : Add GAMMA Function refer from P2 GB
-#if defined(CONFIG_P2_GAMMA) || defined(CONFIG_U2_GAMMA) || defined(CONFIG_COSMO_GAMMA) || defined(CONFIG_CX2_GAMMA)
-        REG_FLD_MOD(DISPC_CONFIG, 1, 3, 3);
-        REG_FLD_MOD(DISPC_CONFIG, 1, 9, 9);
-#endif
-//LGE_CHANGE_E[jeonghoon.cho@lge.com] 2012-0208, P940 : Add GAMMA Function refer from P2 GB
+
 	if (channel == OMAP_DSS_CHANNEL_LCD2)
 		REG_FLD_MOD(DISPC_CONTROL2, 1, bit, bit);
 	else
@@ -3156,274 +3143,57 @@ bool dispc_trans_key_enabled(enum omap_channel ch)
 
 	return enabled;
 }
-//LGE_CHANGE_S [jeonghoon.cho@lge.com] 2012-0208, P940 : Add GAMMA Function refer from P2 GB
-//LGE_CHANGE_S [taekeun1.kim@lge.com] 2010-12-14, P920 : code refine.
-u32 dispc_convert_gamma_rgb(int index,u32 temp,int red, int green,int blue)
-{
-	return  index<<24 |(((temp&0x000000FF)*(u32)blue)/255)
-					  |(((((temp&0x0000FF00)>>8)*(u32)green)/255)<<8)
-					  |(((((temp&0x00FF0000)>>16)*(u32)red)/255)<<16);
-}
-#if defined(CONFIG_LUT_FILE_TUNING)
-long tuning_table[256];
-#endif
+
+#ifdef CONFIG_OMAP2_DSS_GAMMA_CONTROL
+/* valid inputs for gamma are from 1 to 10 that map
+  from 0.2 to 2.2 gamma values and 0 for disabled */
 int dispc_enable_gamma(enum omap_channel ch, u8 gamma)
 {
-	//printk("GAMMA	:	table_type is %d, red is %d, green is %d, blue is %d \n",
-	//	lcd_gamma_rgb.table_type,lcd_gamma_rgb.red,lcd_gamma_rgb.green,lcd_gamma_rgb.blue);
 #ifdef CONFIG_ARCH_OMAP4
-	u32 i, temp, channel;
-	static int enabled;
-	u32 *tablePtr;
+        bool enabled;
+        u32 i, temp, channel;
+        static bool enable[MAX_DSS_MANAGERS];
 
-        channel = ch == OMAP_DSS_CHANNEL_LCD ? 0 :
-                 ch == OMAP_DSS_CHANNEL_LCD2 ? 1 : 2;
+        enabled = enable[ch];
 
+        switch (ch) {
+        case OMAP_DSS_CHANNEL_LCD:
+                channel = 0;
+                break;
+        case OMAP_DSS_CHANNEL_LCD2:
+                channel = 1;
+                break;
+        case OMAP_DSS_CHANNEL_DIGIT:
+                channel = 2;
+                break;
+        default:
+                return -EINVAL;
+        }
 
-        if (gamma > NO_OF_GAMMA_TABLES)
+        if (gamma > NO_OF_GAMMA_TABLES || gamma < 0)
                 return -EINVAL;
 
-#if defined(CONFIG_P2_S_CURVE) || defined(CONFIG_U2_S_CURVE) || defined(CONFIG_COSMO_S_CURVE) || defined(CONFIG_CX2_S_CURVE)
-	{
-		if(ch == 2)
-		{
-			dispc_write_reg(DISPC_GAMMA_TABLE(ch), 0x80000000);
-			for (i = 0; i < GAMMA_TBL_SZ * 4 - 1; i++) {
-				temp = (i << 20) | (i << 10) | i;
-				dispc_write_reg(DISPC_GAMMA_TABLE(ch), temp);
-			}
-		}
-#if defined(CONFIG_LUT_FILE_TUNING)
-	if(!gamma)
-	{
-#endif
-		for (i = 0; i < GAMMA_TBL_SZ; i++) {
-				temp =  GammaTable[i] | (i<<24);
-				//if(i == 255)
-					//printk("GAMMA	:	MAX_RGB = %x\n", temp);
-				dispc_write_reg(DISPC_GAMMA_TABLE(channel), temp);
-		}
-#if defined(CONFIG_LUT_FILE_TUNING)
-	}
-	else
-	{
-		for (i = 0; i < GAMMA_TBL_SZ; i++) {
-				temp =  tuning_table[i] | (i<<24);
-				printk("[dyotest]Tuning LUT num=%d, value= 0x%x\n", i,temp);
-				dispc_write_reg(DISPC_GAMMA_TABLE(channel), temp);
-		}
-	}
-#endif
-	}
-#else
         if (gamma) {
-                u8 *tablePtr = gammaTablePtr[gamma - 1];
+                u8 *tablePtr = gamma_table[gamma - 1];
 
                 for (i = 0; i < GAMMA_TBL_SZ; i++) {
                         temp =  tablePtr[i];
                         temp =  (i<<24)|(temp|(temp<<8)|(temp<<16));
-                        dispc_write_reg(DISPC_GAMMA_TABLE(channel), temp);
+                        dispc_write_reg(DISPC_GAMMA_TABLE + (channel*4), temp);
                 }
         }
-#endif
-        enabled = enabled & (~(1 << channel) | (gamma ? (1 << channel) : 0));
+        enabled = enabled & ~(1 << channel) | (gamma ? (1 << channel) : 0);
         REG_FLD_MOD(DISPC_CONFIG, (enabled & 1), 3, 3);
         REG_FLD_MOD(DISPC_CONFIG, !!(enabled & 6), 9, 9);
 
-        return 0;
-#endif
-}
-//LGE_CHANGE_E [taekeun1.kim@lge.com] 2010-12-14, P920 : code refine.
-//LGE_CHANGE_E [jeonghoon.cho@lge.com] 2012-0208, P940 : Add GAMMA Function refer from P2 GB
+        enable[ch] = enabled;
 
-//LGE_CHANGE_S [jeonghoon.cho@lge.com] 2012-0208, P940 : Add GAMMA Function refer from P2 GB
-int dispc_set_gamma_rgb(enum omap_channel ch, u8 gamma,int red,int green,int blue)
-{
-#ifdef CONFIG_ARCH_OMAP4
-	u32 i, temp, channel;
-	static int enabled;
-	unsigned char maker_id;
-	u32 *tablePtr;
-
-        channel = ch == OMAP_DSS_CHANNEL_LCD ? 0 :
-                 ch == OMAP_DSS_CHANNEL_LCD2 ? 1 : 2;
-
-
-        if (gamma > NO_OF_GAMMA_TABLES)
-                return -EINVAL;
-
-#if defined(CONFIG_P2_S_CURVE) || defined(CONFIG_U2_S_CURVE) || defined(CONFIG_COSMO_S_CURVE)|| defined(CONFIG_CX2_S_CURVE)
-	#if defined(CONFIG_MACH_LGE_U2_P760)
-		tablePtr = GammaTable_p760;
-	#elif defined(CONFIG_MACH_LGE_U2_P769)
-		tablePtr = GammaTable_p769;
-	#elif defined(CONFIG_MACH_LGE_U2_P768)
-		tablePtr = GammaTable_p760;
-	#elif defined(CONFIG_MACH_LGE_COSMO)||defined(CONFIG_MACH_LGE_CX2)
-		tablePtr = GammaTable_LGD;	
-	#else
-		maker_id =gpio_get_value(GPIO_LCD_MAKER_ID);
-	        if(maker_id == 1){
-			tablePtr = GammaTable_LGD;
-		} else {
-			tablePtr = GammaTable_HITACHI;
-		}
-	#endif
-	if(ch == 2)
-	{
-		dispc_write_reg(DISPC_GAMMA_TABLE(ch), 0x80000000);
-		for (i = 0; i < GAMMA_TBL_SZ * 4 - 1; i++) {
-			temp = (i << 20) | (i << 10) | i;
-			dispc_write_reg(DISPC_GAMMA_TABLE(ch), temp);
-		}
-	}
-
-	for ( i = 0; i <GAMMA_TBL_SZ; i++) {
-		temp = tablePtr[i];
-		temp = dispc_convert_gamma_rgb(i,temp,red, green, blue);
-	if(i==255)
-		printk("GAMMA	:	Tabel_values %dth is 0x%x\n",i,temp);
-	dispc_write_reg(DISPC_GAMMA_TABLE(channel), temp);
-	}
-
-#else
-        if (gamma) {
-                u8 *tablePtr = gammaTablePtr[gamma - 1];
-
-                for (i = 0; i < GAMMA_TBL_SZ; i++) {
-                        temp =  tablePtr[i];
-                        temp =  (i<<24)|(temp|(temp<<8)|(temp<<16));
-                        dispc_write_reg(DISPC_GAMMA_TABLE(channel), temp);
-                }
-        }
 #endif
 
-        enabled = enabled & (~(1 << channel) | (gamma ? (1 << channel) : 0));
-        REG_FLD_MOD(DISPC_CONFIG, (enabled & 1), 3, 3);
-        REG_FLD_MOD(DISPC_CONFIG, !!(enabled & 6), 9, 9);
-
-
-        return 0;
+ return 0;
+}
 #endif
-}
 
-void dispc_set_gamma_table()
-{
-	u32 temp;
-	int i, maker_id, gamma_nv_flag;
-	if((lcd_gamma_rgb.red || lcd_gamma_rgb.green || lcd_gamma_rgb.blue))
-		gamma_nv_flag = 1;
-	else
-		gamma_nv_flag = 0;
-	#if defined(CONFIG_MACH_LGE_U2_P760)
-		if(gamma_nv_flag == GAMMA_NV_ENABLED)
-			lcd_gamma_rgb.table_type= PANEL_P760_NV;
-		else
-			lcd_gamma_rgb.table_type= PANEL_P760;
-	#elif defined(CONFIG_MACH_LGE_U2_P769)
-		if(gamma_nv_flag == GAMMA_NV_ENABLED)
-			lcd_gamma_rgb.table_type= PANEL_P769_NV;
-		else
-			lcd_gamma_rgb.table_type= PANEL_P769;
-	#elif defined(CONFIG_MACH_LGE_U2_P768)
-		if(gamma_nv_flag == GAMMA_NV_ENABLED)
-			lcd_gamma_rgb.table_type= PANEL_P760_NV;
-		else
-			lcd_gamma_rgb.table_type= PANEL_P760;
-	#elif defined(CONFIG_MACH_LGE_COSMO)||defined(CONFIG_MACH_LGE_CX2)
-		if(gamma_nv_flag == GAMMA_NV_ENABLED)
-			lcd_gamma_rgb.table_type= PANEL_LGD_NV;
-		else
-			lcd_gamma_rgb.table_type= PANEL_LGD;	
-	#else
-		maker_id = gpio_get_value(GPIO_LCD_MAKER_ID);
-
-		if(maker_id == PANEL_LGD) {
-			if(gamma_nv_flag == GAMMA_NV_ENABLED)
-				lcd_gamma_rgb.table_type= PANEL_LGD_NV;
-			else
-				lcd_gamma_rgb.table_type= PANEL_LGD;
-		}
-		else {
-			if(gamma_nv_flag == GAMMA_NV_ENABLED)
-				lcd_gamma_rgb.table_type= PANEL_HITACHI_NV;
-			else
-				lcd_gamma_rgb.table_type= PANEL_HITACHI;
-		}
-	#endif
-	if(!gamma_nv_flag)
-		printk("[DISPC] LUT Table = %d, %s%s\n",lcd_gamma_rgb.table_type,(lcd_gamma_rgb.table_type==4)? "PANEL_P769":"", (lcd_gamma_rgb.table_type==6)? "PANLE_P760":"");
-	else
-		printk("[DISPC] LUT Table = %d, %s%s\n",lcd_gamma_rgb.table_type,(lcd_gamma_rgb.table_type==5)? "PANEL_P769_NV":"", (lcd_gamma_rgb.table_type==7)? "PANLE_P760_NV":"");
-
-	switch (lcd_gamma_rgb.table_type) {
-		case PANEL_HITACHI :
-			for(i=0;i<GAMMA_TBL_SZ;i++)
-				GammaTable[i]=GammaTable_HITACHI[i];
-			break;
-
-		case PANEL_LGD :
-			for(i=0;i<GAMMA_TBL_SZ;i++)
-				GammaTable[i]=GammaTable_LGD[i];
-			break;
-
-		case PANEL_HITACHI_NV :
-			for ( i = 0; i <GAMMA_TBL_SZ; i++) {
-				GammaTable[i]=GammaTable_HITACHI[i];
-				temp = GammaTable[i];
-				temp = dispc_convert_gamma_rgb(i,temp,lcd_gamma_rgb.red, lcd_gamma_rgb.green, lcd_gamma_rgb.blue);
-				GammaTable[i] = temp;
-			}
-			break;
-
-		case PANEL_LGD_NV :
-			for ( i = 0; i <GAMMA_TBL_SZ; i++) {
-				GammaTable[i]=GammaTable_LGD[i];
-				temp = GammaTable[i];
-				temp = dispc_convert_gamma_rgb(i,temp,lcd_gamma_rgb.red, lcd_gamma_rgb.green, lcd_gamma_rgb.blue);
-				GammaTable[i] = temp;
-			}
-			break;
-
-		case PANEL_P769 :
-			for(i=0;i<GAMMA_TBL_SZ;i++)
-				GammaTable[i]=GammaTable_p769[i];
-			break;
-
-		case PANEL_P769_NV :
-			for ( i = 0; i <GAMMA_TBL_SZ; i++) {
-				GammaTable[i]=GammaTable_p769[i];
-				temp = GammaTable[i];
-				temp = dispc_convert_gamma_rgb(i,temp,lcd_gamma_rgb.red, lcd_gamma_rgb.green, lcd_gamma_rgb.blue);
-				GammaTable[i] = temp;
-			}
-			break;
-
-		case PANEL_P760 :
-			for(i=0;i<GAMMA_TBL_SZ;i++)
-				GammaTable[i]=GammaTable_p760[i];
-			break;
-
-		case PANEL_P760_NV :
-			for ( i = 0; i <GAMMA_TBL_SZ; i++) {
-				GammaTable[i]=GammaTable_p760[i];
-				temp = GammaTable[i];
-				temp = dispc_convert_gamma_rgb(i,temp,lcd_gamma_rgb.red, lcd_gamma_rgb.green, lcd_gamma_rgb.blue);
-				GammaTable[i] = temp;
-			}
-			break;
-
-		default :
-			maker_id = gpio_get_value(GPIO_LCD_MAKER_ID);
-			if(maker_id == 1)
-				for(i=0;i<GAMMA_TBL_SZ;i++)
-					GammaTable[i]=GammaTable_LGD[i];
-			else
-				for(i=0;i<GAMMA_TBL_SZ;i++)
-					GammaTable[i]=GammaTable_HITACHI[i];
-		}
-}
-//LGE_CHANGE_E [jeonghoon.cho@lge.com] 2012-0208, P940 : Add GAMMA Function refer from P2 GB
 void dispc_set_tft_data_lines(enum omap_channel channel, u8 data_lines)
 {
 	int code;
@@ -4793,16 +4563,7 @@ static int omap_dispchw_probe(struct platform_device *pdev)
 
 	_omap_dispc_initialize_irq();
 
-//LGE_CHANGE_S [jeonghoon.cho@lge.com] 2012-0208, P940 : Add GAMMA Function refer from P2 GB
-#if defined(CONFIG_P2_GAMMA) || defined(CONFIG_U2_GAMMA) || defined(CONFIG_COSMO_GAMMA) || defined(CONFIG_CX2_GAMMA)
-#if defined(CONFIG_P2_S_CURVE) || defined(CONFIG_U2_S_CURVE) || defined(CONFIG_COSMO_S_CURVE)||defined(CONFIG_CX2_S_CURVE)
-printk("probe_CONFIG_P2_GAMMA\n");
-	dispc_set_gamma_table();
-	dispc_enable_gamma(OMAP_DSS_CHANNEL_LCD, 0);
-	dispc_enable_gamma(OMAP_DSS_CHANNEL_LCD2, 0);
-#endif
-#endif
-//LGE_CHANGE_E [jeonghoon.cho@lge.com] 2012-0208, P940 : Add GAMMA Function refer from P2 GB
+
 	rev = dispc_read_reg(DISPC_REVISION);
 	dev_dbg(&pdev->dev, "OMAP DISPC rev %d.%d\n",
 	       FLD_GET(rev, 7, 4), FLD_GET(rev, 3, 0));
@@ -4851,36 +4612,9 @@ void dispc_uninit_platform_driver(void)
 {
 	return platform_driver_unregister(&omap_dispchw_driver);
 }
-//LGE_CHANGE_S [jeonghoon.cho@lge.com] 2012-0208, P940 : Add GAMMA Function refer from P2 GB
-static u32 __init gamma_rgb_data_dispc(char *str)
-{
-	int output[3]={0,};
 
-	sscanf(str,"%d,%d,%d",&output[0],&output[1],&output[2]);
-	lcd_gamma_rgb.red = output[0];
-	lcd_gamma_rgb.green = output[1];
-	lcd_gamma_rgb.blue= output[2];
 
-	return 1;
-}
-__setup("RGB=", gamma_rgb_data_dispc);
-//LGE_CHANGE_E [jeonghoon.cho@lge.com] 2012-0208, P940 : Add GAMMA Function refer from P2 GB
 
-//CHANGE_S mo2mk.kim@lge.com 2012-07-26 apply kcal code for gamma
-#if defined(CONFIG_COSMO_GAMMA) || defined(CONFIG_CX2_GAMMA)
-u32 gamma_rgb_data_dispc_for_extern(char *str)
-{
-	int output[3]={0,};
-
-	sscanf(str,"%d,%d,%d",&output[0],&output[1],&output[2]);
-	lcd_gamma_rgb.red = output[0];
-	lcd_gamma_rgb.green = output[1];
-	lcd_gamma_rgb.blue= output[2];
-
-	return 1;	
-}
-#endif
-//CHANGE_E mo2mk.kim@lge.com 2012-07-26 apply kcal code for gamma
 
 #ifdef CONFIG_DSSCOMP_ADAPT
 void dispc_set_wb_channel_out(enum omap_plane plane)

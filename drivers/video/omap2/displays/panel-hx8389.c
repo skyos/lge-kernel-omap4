@@ -81,9 +81,7 @@ extern int ssc_enable;
 static irqreturn_t hx8389_panel_te_isr(int irq, void *data);
 static void hx8389_panel_te_timeout_work_callback(struct work_struct *work);
 static int _hx8389_panel_enable_te(struct omap_dss_device *dssdev, bool enable);
-//LGE_CHANGE_S [jeonghoon.cho@lge.com] 2012-0208, P940 : Add sysfile for gamma tuning + at%kcal jeonghoon.cho@lge.com
-extern int dispc_enable_gamma(enum omap_channel ch, u8 gamma);
-//LGE_CHANGE_E [jeonghoon.cho@lge.com] 2012-0208, P940 : Add sysfile for gamma tuning + at%kcal jeonghoon.cho@lge.com
+
 #define DSI_GEN_SHORTWRITE_NOPARAM 0x3
 #define DSI_GEN_SHORTWRITE_1PARAM 0x13
 #define DSI_GEN_SHORTWRITE_2PARAM 0x23
@@ -713,146 +711,8 @@ err:
 	mutex_unlock(&td->lock);
 	return r;
 }
-#if defined(CONFIG_LUT_FILE_TUNING)
-	extern long tuning_table[256];
-static ssize_t display_file_tuning_store(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t size)
-{
-	    int fd;
-           char tmp_buf[256][6]={0x00};
-           char tmp_buf2[13]={0x00};
-	    char tmp_buf22[6]={0x00};
-	    //char tuning_table[256];
-           int input,i,j;
-           //u32      temp[256];
-           sscanf(buf, "%d",&input);
-           set_fs(KERNEL_DS);
-           fd = sys_open((const char __user *) "/mnt/sdcard/file_tuning.txt", O_RDONLY, 0);
-           if(fd >= 0)
-           {
-                                memset(tmp_buf, 0x00, sizeof(tmp_buf));
-                                for(i=0;i<256;i++)
-                                {
-                                          sys_read(fd, (const char __user *) tmp_buf2, 13);
-					for(j=0;j<6;j++)
-						{
-							tmp_buf22[j] = tmp_buf2[j+4];
-						}
-						tuning_table[i] = simple_strtol(tmp_buf22, NULL, 16);
-                                }
-					dispc_enable_gamma(OMAP_DSS_CHANNEL_LCD2, 1);
-					sys_close(fd);
-           }
-	return size;
-}
-static DEVICE_ATTR(file_tuning, 0660, NULL, display_file_tuning_store);
-#endif
-//LGE_CHANGE_S [jeonghoon.cho@lge.com] 2012-0208, P940 : Add sysfile for gamma tuning + at%kcal jeonghoon.cho@lge.com
-extern int dispc_set_gamma_rgb(enum omap_channel ch, u8 gamma,int red,int green,int blue);
-static int red = 255,green = 255,blue = 255;
-static ssize_t display_gamma_tuning_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	return snprintf(buf, PAGE_SIZE, "%d,%d,%d",red,green,blue);
-}
-static ssize_t display_gamma_tuning_store(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t size)
-{
-	sscanf(buf, "%d,%d,%d",&red,&green,&blue);
-	printk("SJ	:	RED	:	%d	GREEN :		%d	BLUE :		%d\n",red,green,blue);
-	dispc_set_gamma_rgb(OMAP_DSS_CHANNEL_LCD, 0,red,green,blue);
-	dispc_set_gamma_rgb(OMAP_DSS_CHANNEL_LCD2, 0,red,green,blue);
-	return size;
-}
-
-static ssize_t display_init_code_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	int i = row_of_init_code;
-	int r;
-
-	for(i=0; i < u760_hitachi_lcd_command_for_mipi[row_of_init_code][2] + 3; i++)
-	{
-		sprintf(buf, "%x,", u760_hitachi_lcd_command_for_mipi[row_of_init_code][i]);
-		buf += 3;
-	}
-	sprintf(buf, "\n");
-
-	return i*3;
-}
-static ssize_t display_init_code_store(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t size)
-{
-	int cmd, type, len, adr, val;
-	int row,col,num;
 
 
-	num = sscanf(buf, "%x,%x,%x,%x",&cmd,&type,&len,&adr);
-	printk(KERN_ERR "buf_adr=%x, buf=%c%c%c \n",buf,buf[0],buf[1],buf[2]);
-	printk("num=%x",num);
-
-	if(cmd == END_OF_COMMAND)
-	{
-		row_of_init_code = type;
-		return size;
-	}
-
-
-
-#if 0
-	for(row=0; u760_hitachi_lcd_command_for_mipi[row][0] != END_OF_COMMAND; row++)
-	{
-		if(u760_hitachi_lcd_command_for_mipi[row][3] == adr) break;
-	}
-
-	if(u760_hitachi_lcd_command_for_mipi[row][0] == END_OF_COMMAND)
-	{
-		if(row == 19) {
-			printk("Can't add row to init code array \n");
-			return size;
-		}
-		u760_hitachi_lcd_command_for_mipi[row+1][0] = END_OF_COMMAND;
-	}
-#else
-	row = row_of_init_code;
-#endif
-	if(row > 19) {
-		printk("Can't add row to init code array \n");
-		return size;
-	}
-
-	for(col=0; col < len + 3; col++)
-	{
-		while( !( (buf[0]>='0' && buf[0]<='9') || (buf[0]>='a' && buf[0]<='f') \
-			|| (buf[0]>='A' && buf[0]<='F') ) ){
-			buf++;
-		}
-
-		num = sscanf(buf,"%x",&val);
-
-		printk("num=%x",num);
-		printk("buf_adr=%x, buf=%c%c%c, val=%x\n",buf,buf[0],buf[1],buf[2],val);
-
-		while( ( (buf[0]>='0' && buf[0]<='9') || (buf[0]>='a' && buf[0]<='f') \
-			|| (buf[0]>='A' && buf[0]<='F') ) ){
-			buf++;
-		}
-
-
-		u760_hitachi_lcd_command_for_mipi[row][col] = (u8)val;
-	}
-
-
-	return size;
-}
-
-static DEVICE_ATTR(init_code, 0660, display_init_code_show, display_init_code_store);
-
-static DEVICE_ATTR(gamma_tuning, 0660, display_gamma_tuning_show, display_gamma_tuning_store);
-//LGE_CHANGE_E [jeonghoon.cho@lge.com] 2012-0208, P940 : Add sysfile for gamma tuning + at%kcal jeonghoon.cho@lge.com
 static ssize_t display_porch_value_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t size)
 {
        struct omap_dss_device *dssdev = to_dss_device(dev);
@@ -952,9 +812,7 @@ static ssize_t hx8389_panel_store_esd_interval(struct device *dev,
 
 	return count;
 }
-//LGE_CHANGE_S [jeonghoon.cho@lge.com] 2012-0208, P940 : Add sysfile for gamma tuning + at%kcal jeonghoon.cho@lge.com
-extern int dispc_enable_gamma(enum omap_channel ch, u8 gamma);
-//LGE_CHANGE_E [jeonghoon.cho@lge.com] 2012-0208, P940 : Add sysfile for gamma tuning + at%kcal jeonghoon.cho@lge.com
+
 
 static ssize_t hx8389_panel_show_esd_interval(struct device *dev,
 		struct device_attribute *attr,
@@ -1083,17 +941,6 @@ static struct attribute *hx8389_panel_attrs[] = {
 	&dev_attr_esd_interval.attr,
 	&dev_attr_ulps.attr,
 	&dev_attr_ulps_timeout.attr,
-//LGE_CHANGE_S [jeonghoon.cho@lge.com] 2012-0208, P940 : Add sysfile for gamma tuning + at%kcal jeonghoon.cho@lge.com
-    &dev_attr_gamma_tuning.attr,
-#if defined(CONFIG_LUT_FILE_TUNING)
-    &dev_attr_file_tuning.attr,
-#endif
-    &dev_attr_porch_value.attr,
-    &dev_attr_clock_value.attr,
-    &dev_attr_ssc_enable.attr,
-    &dev_attr_init_code.attr,
-
-//LGE_CHANGE_E [jeonghoon.cho@lge.com] 2012-0208, P940 : Add sysfile for gamma tuning + at%kcal jeonghoon.cho@lge.com
 	NULL,
 };
 
@@ -1372,12 +1219,7 @@ static int hx8389_panel_power_on(struct omap_dss_device *dssdev)
 			if (r)
 				goto err;
 		}
-//LGE_CHANGE_S [jeonghoon.cho@lge.com] 2012-0208, P940 : Add sysfile for gamma tuning + at%kcal jeonghoon.cho@lge.com
-#if defined(CONFIG_U2_GAMMA)
-	dispc_enable_gamma(OMAP_DSS_CHANNEL_LCD, 0);
-	dispc_enable_gamma(OMAP_DSS_CHANNEL_LCD2, 0);
-#endif
-//LGE_CHANGE_E [jeonghoon.cho@lge.com] 2012-0208, P940 : Add sysfile for gamma tuning + at%kcal jeonghoon.cho@lge.com
+
 	if(dssdev->phy.dsi.type == OMAP_DSS_DSI_TYPE_VIDEO_MODE){
 			r = hx8389_panel_dcs_write_0(td,DCS_DISPLAY_ON);
 			if (r)
