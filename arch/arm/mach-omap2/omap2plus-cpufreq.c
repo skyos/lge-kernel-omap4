@@ -75,7 +75,7 @@ static unsigned int current_cooling_level;
 static bool omap_cpufreq_ready;
 static bool omap_cpufreq_suspended;
 
-static int oc_val;
+int oc_val = 1;
 
 static unsigned int omap_getspeed(unsigned int cpu)
 {
@@ -596,41 +596,55 @@ static int omap_cpu_exit(struct cpufreq_policy *policy)
  {
  	return sprintf(buf, "%d\n", oc_val);
  }
- static ssize_t store_gpu_oc(struct cpufreq_policy *policy, const char *buf,
- 	size_t count)
- {
- 	int prev_oc, ret1, ret2;
-         struct device *dev;
- 	unsigned long gpu_freqs[2] = {307200000,384000000};
- 
- 	prev_oc = oc_val;
- 	if (prev_oc < 0 || prev_oc > 1) {
- 		// shouldn't be here
- 		pr_info("[overclock] gpu_oc error - bailing\n");
- 		return count;
- 	}
- 
- 	sscanf(buf, "%d\n", &oc_val);
- 	if (oc_val < 0 ) oc_val = 0;
- 	if (oc_val > 1 ) oc_val = 1;
- 	if (prev_oc == oc_val) return count;
- 
-         dev = omap_hwmod_name_get_dev("gpu");
-         ret1 = opp_disable(dev, gpu_freqs[prev_oc]);
-         ret2 = opp_enable(dev, gpu_freqs[oc_val]);
-         pr_info("[overclock] gpu top speed changed from %lu to %lu (%d,%d)\n",
- 		gpu_freqs[prev_oc], gpu_freqs[oc_val], ret1, ret2);
- 
- 	return count;
- }
- 
- struct freq_attr gpu_oc = {
- 	.attr = { .name = "gpu_oc",
- 		  .mode = 0666,
- 		},
- 	.show = show_gpu_oc,
- 	.store = store_gpu_oc,
- };
+static ssize_t store_gpu_oc(struct cpufreq_policy *policy, const char *buf, size_t size)
+{
+        int prev_oc, ret1, ret2; 
+        struct device *dev;
+        unsigned long gpu_freqs[3] = {307200000,384000000,416000000};
+
+        prev_oc = oc_val;
+        if (prev_oc < 0 || prev_oc > 2) {
+                // shouldn't be here
+                pr_info("[dtrail] gpu_oc error - bailing\n");        
+                return size;
+        }
+        
+        sscanf(buf, "%d\n", &oc_val);
+        if (oc_val < 0 ) oc_val = 0;
+        if (oc_val > 2 ) oc_val = 2;
+        if (prev_oc == oc_val) return size;
+
+        dev = omap_hwmod_name_get_dev("gpu");
+
+#ifdef CONFIG_PVR_GOVERNOR
+  if (prev_oc < 2 && oc_val == 2) {
+    ret1 = opp_disable(dev, gpu_freqs[1]);
+    ret2 = opp_enable(dev, gpu_freqs[oc_val]);
+    pr_info("[imoseyon] gpu top speed changed from %lu to %lu (%d,%d)\n", 
+      gpu_freqs[prev_oc], gpu_freqs[oc_val], ret1, ret2);
+  } else if (prev_oc == 2) {
+    ret1 = opp_disable(dev, gpu_freqs[prev_oc]);
+    ret2 = opp_enable(dev, gpu_freqs[1]);
+    pr_info("[imoseyon] gpu top speed changed from %lu to %lu (%d,%d)\n", 
+      gpu_freqs[prev_oc], gpu_freqs[oc_val], ret1, ret2);
+  } else {
+    pr_info("[imoseyon] gpu top speed changed from %lu to %lu (%d,%d)\n", 
+      gpu_freqs[prev_oc], gpu_freqs[oc_val]);
+  }
+#else 
+        ret1 = opp_disable(dev, gpu_freqs[prev_oc]);
+        ret2 = opp_enable(dev, gpu_freqs[oc_val]);
+        pr_info("[dtrail] gpu top speed changed from %lu to %lu (%d,%d)\n", 
+                gpu_freqs[prev_oc], gpu_freqs[oc_val], ret1, ret2);
+#endif        
+        return size;
+}
+
+static struct freq_attr gpu_oc = {
+        .attr = {.name = "gpu_oc", .mode=0666,},
+        .show = show_gpu_oc,
+        .store = store_gpu_oc,
+};
  
 static struct freq_attr *omap_cpufreq_attr[] = {
 	&cpufreq_freq_attr_scaling_available_freqs,
@@ -691,7 +705,7 @@ static int __init omap_cpufreq_init(void)
 {
 	int ret;
 
-	oc_val = 0;
+	/*oc_val = 0;*/
 
 #ifdef ENABLE_SLEEP_MAX_FREQUENCY
   screen_off_max_freq = 0;
