@@ -1335,7 +1335,9 @@ void dispc_enable_gamma_table(bool enable)
 		return;
 	}
 
-	REG_FLD_MOD(DISPC_CONFIG, enable, 9, 9);
+	 dispc_runtime_get();
+        REG_FLD_MOD(DISPC_CONFIG, enable, 9, 9);
+        dispc_runtime_put();
 }
 
 void dispc_set_zorder(enum omap_plane plane,
