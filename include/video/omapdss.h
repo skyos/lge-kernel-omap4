@@ -467,9 +467,6 @@ struct omap_overlay_manager_info {
 
 	bool cpr_enable;
 	struct omap_dss_cpr_coefs cpr_coefs;
-	#ifdef CONFIG_OMAP2_DSS_GAMMA_CONTROL
- 	  u8 gamma;
- 	#endif 
 
 #ifdef CONFIG_LGE_BROADCAST_TDMB
 	struct omap_dss_dmb_coefs dmb_coefs;

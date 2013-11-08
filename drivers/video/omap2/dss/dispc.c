@@ -3099,17 +3099,9 @@ int dispc_enable_gamma(enum omap_channel ch, u8 gamma)
         enabled = enable[ch];
 
         switch (ch) {
-        case OMAP_DSS_CHANNEL_LCD:
-                channel = 0;
-                break;
-        case OMAP_DSS_CHANNEL_LCD2:
-                channel = 1;
-                break;
-        case OMAP_DSS_CHANNEL_DIGIT:
-                channel = 2;
-                break;
-        default:
-                return -EINVAL;
+        channel = ch == OMAP_DSS_CHANNEL_LCD ? 0 :
+ -                 ch == OMAP_DSS_CHANNEL_LCD2 ? 1 : 2;
+                
         }
 
         if (gamma > NO_OF_GAMMA_TABLES || gamma < 0)
