@@ -25,7 +25,7 @@
  ******************************************************************************/
 
 #include <linux/version.h>
-#include <linux/.h>
+#include <linux/kernel.h>
 #include <linux/console.h>
 #include <linux/fb.h>
 #include <linux/module.h>

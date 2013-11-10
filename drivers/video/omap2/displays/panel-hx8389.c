@@ -1199,7 +1199,7 @@ static int hx8389_panel_probe(struct omap_dss_device *dssdev)
 	if (td->use_dsi_bl)
 		props.max_brightness = 255;
 	else
-		props.max_brightness = 127;
+		props.max_brightness = 155;
 
 	props.type = BACKLIGHT_RAW;
 	bldev = backlight_device_register(dev_name(&dssdev->dev), &dssdev->dev,
@@ -1216,7 +1216,7 @@ static int hx8389_panel_probe(struct omap_dss_device *dssdev)
 	if (td->use_dsi_bl)
 		bldev->props.brightness = 255;
 	else
-		bldev->props.brightness = 127;
+		bldev->props.brightness = 155;
 
 	hx8389_panel_bl_update_status(bldev);
 

@@ -43,7 +43,7 @@
 #include "ttrace.h"
 
 #ifdef __linux__
-#include <linux/.h>	
+#include <linux/kernel.h>	
 #include <linux/string.h>	
 #else
 #include <stdio.h>

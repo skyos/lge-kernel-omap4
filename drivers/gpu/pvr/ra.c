@@ -31,7 +31,7 @@
 #include "osfunc.h"
 
 #ifdef __linux__
-#include <linux/.h>
+#include <linux/kernel.h>
 #include "proc.h"
 #endif
 

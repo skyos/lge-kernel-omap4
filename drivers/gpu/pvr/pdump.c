@@ -45,7 +45,7 @@
 #include "pdump_km.h"
 #include "pdump_int.h"
 
-#include <linux/.h> 
+#include <linux/kernel.h> 
 #include <linux/string.h> 
 
 static IMG_BOOL PDumpWriteString2		(IMG_CHAR * pszString, IMG_UINT32 ui32Flags);

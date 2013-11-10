@@ -40,7 +40,7 @@
 #include <linux/module.h>
 #endif
 
-#include <linux/.h>
+#include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/hardirq.h>
 #include <linux/mutex.h>

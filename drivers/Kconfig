@@ -142,6 +142,8 @@ source "drivers/omap_hsi/Kconfig"
 
 source "drivers/lge/Kconfig"
 
+source "drivers/gpu/pvr/Kconfig"
+
 # LGE_BROADCAST {
 source "drivers/broadcast/Kconfig"
 # LGE_BROADCAST }

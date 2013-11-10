@@ -27,7 +27,7 @@
 #include <linux/errno.h>
 #include <linux/module.h>
 #include <linux/fs.h>
-#include <linux/.h>
+#include <linux/kernel.h>
 #include <linux/kdev_t.h>
 #include <linux/pci.h>
 #include <linux/list.h>

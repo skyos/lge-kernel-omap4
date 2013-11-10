@@ -42,7 +42,7 @@
 #define PVR_LINUX_MEM_AREA_POOL_MAX_PAGES 0
 #endif
 
-#include <linux/.h>
+#include <linux/kernel.h>
 #include <asm/atomic.h>
 #include <linux/list.h>
 #include <linux/mutex.h>

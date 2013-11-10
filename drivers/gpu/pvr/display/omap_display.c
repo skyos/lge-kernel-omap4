@@ -17,7 +17,7 @@
  */
 
 #include <linux/slab.h>
-#include <linux/.h>
+#include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/fb.h>
 
