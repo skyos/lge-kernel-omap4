@@ -364,14 +364,19 @@ LINUXINCLUDE    := -I$(srctree)/arch/$(hdr-arch)/include \
 
 KBUILD_CPPFLAGS := -D__KERNEL__
 
-KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
-		   -fno-strict-aliasing -fno-common \
-		   -Werror-implicit-function-declaration \
-		   -Wno-format-security \
-		   -fno-delete-null-pointer-checks \
-       			-mcpu=cortex-a9 \
-       			-mno-unaligned-access \
-			-fsingle-precision-constant
+KBUILD_CFLAGS   := KBUILD_CFLAGS   += -O2 \
+        -march=armv7-a \
+                    -mtune=cortex-a9 \
+                    -mfpu=neon \
+                    -fsched-spec-load \
+                    -fgcse-after-reload \
+                    -fpredictive-commoning \
+                    -ftree-vectorize \
+                    -ftree-loop-im \
+                    -fmodulo-sched \
+                    -fmodulo-sched-allow-regmoves \
+                    -fno-inline-functions \
+                    -fno-unswitch-loops
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
 KBUILD_AFLAGS   := -D__ASSEMBLY__
@@ -562,9 +567,33 @@ endif # $(dot-config)
 all: vmlinux
 
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
-KBUILD_CFLAGS	+= -Os
+KBUILD_CFLAGS   := KBUILD_CFLAGS   += -O2 \
+        -march=armv7-a \
+                    -mtune=cortex-a9 \
+                    -mfpu=neon \
+                    -fsched-spec-load \
+                    -fgcse-after-reload \
+                    -fpredictive-commoning \
+                    -ftree-vectorize \
+                    -ftree-loop-im \
+                    -fmodulo-sched \
+                    -fmodulo-sched-allow-regmoves \
+                    -fno-inline-functions \
+                    -fno-unswitch-loops
 else
-KBUILD_CFLAGS	+= -O2
+KBUILD_CFLAGS   := KBUILD_CFLAGS   += -O2 \
+        -march=armv7-a \
+                    -mtune=cortex-a9 \
+                    -mfpu=neon \
+                    -fsched-spec-load \
+                    -fgcse-after-reload \
+                    -fpredictive-commoning \
+                    -ftree-vectorize \
+                    -ftree-loop-im \
+                    -fmodulo-sched \
+                    -fmodulo-sched-allow-regmoves \
+                    -fno-inline-functions \
+                    -fno-unswitch-loops
 endif
 
 include $(srctree)/arch/$(SRCARCH)/Makefile
