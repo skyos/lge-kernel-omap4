@@ -63,7 +63,7 @@ static spinlock_t speedchange_cpumask_lock;
 static struct mutex gov_lock;
 
 /* Hi speed to bump to from lo speed when load burst (default max) */
-static unsigned int hispeed_freq=420000;
+static unsigned int hispeed_freq=520000;
 
 /* Go to hi speed when CPU load at or above this value. */
 #define DEFAULT_GO_HISPEED_LOAD 40
@@ -919,7 +919,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		freq_table =
 			cpufreq_frequency_get_table(policy->cpu);
 		if (!hispeed_freq)
-			hispeed_freq = 420000;
+			hispeed_freq = 520000;
 
 		for_each_cpu(j, policy->cpus) {
 			unsigned long expires;
