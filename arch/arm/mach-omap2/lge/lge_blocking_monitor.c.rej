@@ -1,0 +1,10 @@
+diff a/arch/arm/mach-omap2/lge/lge_blocking_monitor.c b/arch/arm/mach-omap2/lge/lge_blocking_monitor.c	(rejected hunks)
+@@ -18,7 +18,7 @@
+ 
+ #include <asm/current.h>
+ 
+-#include <include/lge/lge_blocking_monitor.h>
++#include <lge/lge_blocking_monitor.h>
+ 
+ #define MAX_BLOCKING_MONITOR_NUMBER	10
+ 

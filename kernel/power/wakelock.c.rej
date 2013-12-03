@@ -1,10 +1,10 @@
-diff a/kernel/power/suspend.c b/kernel/power/suspend.c	(rejected hunks)
-@@ -30,7 +30,7 @@
- #endif
+diff a/kernel/power/wakelock.c b/kernel/power/wakelock.c	(rejected hunks)
+@@ -29,7 +29,7 @@
+ #include "power.h"
  
  #ifdef CONFIG_MACH_LGE
 -#include <../../arch/arm/mach-omap2/lge/include/lge/lge_blocking_monitor.h>
 +#include <../arch/arm/mach-omap2/lge/include/lge/lge_blocking_monitor.h>
  #endif
  
- #include "power.h"
+ enum {
