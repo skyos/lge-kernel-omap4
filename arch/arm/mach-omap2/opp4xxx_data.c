@@ -278,7 +278,7 @@ static struct omap_opp_def __initdata omap443x_opp_def_list[] = {
 	/* ABE OPP2 - OPP100 */
 	OPP_INITIALIZER("aess", "abe_clk", "iva", true, 196608000, OMAP4430_VDD_IVA_OPP100_UV),
 	/* DSS OPP1 - OPP50 */
-	OPP_INITIALIZER("dss_dispc", "virt_lcd_pclk", "core", true, 93000000, OMAP4430_VDD_CORE_OPP50_UV),
+	OPP_INITIALIZER("dss_dispc", "virt_lcd_pclk", "core", true, 91000000, OMAP4430_VDD_CORE_OPP50_UV),
 	/* DSS OPP2 - OPP100 */
 	OPP_INITIALIZER("dss_dispc", "virt_lcd_pclk", "core", true, 170000000, OMAP4430_VDD_CORE_OPP100_UV),
 };
