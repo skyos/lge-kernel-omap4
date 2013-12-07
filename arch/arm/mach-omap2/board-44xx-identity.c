@@ -154,7 +154,7 @@ static ssize_t omap4_soc_type_max_freq(struct kobject *kobj,
 	else if (omap4_has_mpu_1_2ghz())
 		max_freq = "1.2Ghz";
 	else
-		max_freq = "1.0Ghz";
+		max_freq = "1.2Ghz";
 
 	return sprintf(buf, "%s\n", max_freq);
 }
